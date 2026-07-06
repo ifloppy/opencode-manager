@@ -2,6 +2,10 @@ program opencode_manager;
 
 {$mode objfpc}{$H+}
 
+{$IFDEF MSWINDOWS}
+{$APPTYPE GUI}
+{$ENDIF}
+
 uses
   {$IFDEF UNIX}
   cthreads,

@@ -17,6 +17,8 @@ type
     FConfig: TOpenCodeConfig;
     FOMO: TOMOConfig;
     FProfiles: TProfileManager;
+    FModelListKeys: TStringList;
+    NavPanel: TPanel;
     PageControl: TPageControl;
     Status: TStatusBar;
 
@@ -58,6 +60,8 @@ type
 
     procedure BuildUi;
     function AddTab(const ACaption: string): TTabSheet;
+    function AddNavButton(const ACaption: string; PageIndex: Integer): TButton;
+    procedure UpdateNavigation;
     function AddButton(AParent: TWinControl; const ACaption: string; LeftPos, TopPos, WidthValue: Integer; Handler: TNotifyEvent): TButton;
     function AddLabel(AParent: TWinControl; const ACaption: string; LeftPos, TopPos: Integer): TLabel;
     function AddEdit(AParent: TWinControl; LeftPos, TopPos, WidthValue: Integer): TEdit;
@@ -75,11 +79,13 @@ type
     procedure RefreshProfiles;
     procedure RefreshOMOLists;
     function SelectedText(List: TListBox): string;
+    function SelectedModelId: string;
     function SelectedTools: string;
     procedure ApplyToolsToChecks(Agent: TJSONObject);
     function ObjectInSection(Root: TJSONObject; const Section, Id: string): TJSONObject;
 
     procedure OnOpenConfig(Sender: TObject);
+    procedure OnNavButtonClick(Sender: TObject);
     procedure OnSaveConfig(Sender: TObject);
     procedure OnReload(Sender: TObject);
     procedure OnValidate(Sender: TObject);
@@ -125,10 +131,13 @@ begin
   Caption := 'OpenCode 配置管理器';
   Width := 1180;
   Height := 780;
+  Constraints.MinWidth := 980;
+  Constraints.MinHeight := 640;
   Position := poScreenCenter;
   FConfig := TOpenCodeConfig.Create;
   FOMO := TOMOConfig.Create;
   FProfiles := TProfileManager.Create;
+  FModelListKeys := TStringList.Create;
   BuildUi;
   LoadDefaultConfigs;
 end;
@@ -138,6 +147,7 @@ begin
   FProfiles.Free;
   FOMO.Free;
   FConfig.Free;
+  FModelListKeys.Free;
   inherited Destroy;
 end;
 
@@ -146,6 +156,34 @@ begin
   Result := TTabSheet.Create(PageControl);
   Result.PageControl := PageControl;
   Result.Caption := ACaption;
+  Result.TabVisible := False;
+  AddNavButton(ACaption, PageControl.PageCount - 1);
+end;
+
+function TMainForm.AddNavButton(const ACaption: string; PageIndex: Integer): TButton;
+begin
+  Result := TButton.Create(NavPanel);
+  Result.Parent := NavPanel;
+  Result.Caption := ACaption;
+  Result.Tag := PageIndex;
+  Result.SetBounds(12, 16 + PageIndex * 42, 176, 34);
+  Result.Anchors := [akLeft, akTop, akRight];
+  Result.OnClick := @OnNavButtonClick;
+end;
+
+procedure TMainForm.UpdateNavigation;
+var
+  I: Integer;
+  Btn: TButton;
+begin
+  if not Assigned(NavPanel) then
+    Exit;
+  for I := 0 to NavPanel.ControlCount - 1 do
+    if NavPanel.Controls[I] is TButton then
+    begin
+      Btn := TButton(NavPanel.Controls[I]);
+      Btn.Enabled := Btn.Tag <> PageControl.ActivePageIndex;
+    end;
 end;
 
 function TMainForm.AddButton(AParent: TWinControl; const ACaption: string; LeftPos, TopPos, WidthValue: Integer; Handler: TNotifyEvent): TButton;
@@ -195,9 +233,17 @@ var
   Tab: TTabSheet;
   I: Integer;
 begin
+  NavPanel := TPanel.Create(Self);
+  NavPanel.Parent := Self;
+  NavPanel.Align := alLeft;
+  NavPanel.Width := 200;
+  NavPanel.BevelOuter := bvNone;
+  NavPanel.Color := clBtnFace;
+
   PageControl := TPageControl.Create(Self);
   PageControl.Parent := Self;
   PageControl.Align := alClient;
+  PageControl.TabPosition := tpTop;
   Status := TStatusBar.Create(Self);
   Status.Parent := Self;
   Status.Align := alBottom;
@@ -222,28 +268,28 @@ begin
 
   Tab := AddTab('Provider / Model');
   ProviderList := TListBox.Create(Tab); ProviderList.Parent := Tab; ProviderList.SetBounds(16, 16, 210, 285); ProviderList.Anchors := [akLeft, akTop, akBottom]; ProviderList.OnClick := @OnProviderSelect;
-  AddLabel(Tab, 'Provider ID', 250, 20); ProviderIdEdit := AddCombo(Tab, 370, 16, 260, []); ProviderIdEdit.OnChange := @OnProviderPresetChange;
+  AddLabel(Tab, 'Provider ID', 250, 20); ProviderIdEdit := AddCombo(Tab, 370, 16, 520, []); ProviderIdEdit.Anchors := [akLeft, akTop, akRight]; ProviderIdEdit.OnChange := @OnProviderPresetChange;
   for I := Low(PROVIDER_PRESETS) to High(PROVIDER_PRESETS) do
     ProviderIdEdit.Items.Add(PROVIDER_PRESETS[I].Id);
-  AddLabel(Tab, '显示名', 250, 58); ProviderNameEdit := AddEdit(Tab, 370, 54, 420); ProviderNameEdit.Anchors := [akLeft, akTop, akRight];
-  AddLabel(Tab, 'NPM SDK', 250, 96); ProviderNpmEdit := AddCombo(Tab, 370, 92, 420, NPM_SDK_PRESETS); ProviderNpmEdit.Anchors := [akLeft, akTop, akRight];
+  AddLabel(Tab, '显示名', 250, 58); ProviderNameEdit := AddEdit(Tab, 370, 54, 520); ProviderNameEdit.Anchors := [akLeft, akTop, akRight];
+  AddLabel(Tab, 'NPM SDK', 250, 96); ProviderNpmEdit := AddCombo(Tab, 370, 92, 520, NPM_SDK_PRESETS); ProviderNpmEdit.Anchors := [akLeft, akTop, akRight];
   AddLabel(Tab, 'Base URL', 250, 134); ProviderBaseUrlEdit := AddEdit(Tab, 370, 130, 520); ProviderBaseUrlEdit.Anchors := [akLeft, akTop, akRight];
   AddLabel(Tab, 'API Key', 250, 172); ProviderApiKeyEdit := AddEdit(Tab, 370, 168, 520); ProviderApiKeyEdit.Anchors := [akLeft, akTop, akRight];
   AddButton(Tab, '保存 Provider', 370, 210, 130, @OnSaveProvider);
   AddButton(Tab, '删除 Provider', 510, 210, 130, @OnDeleteProvider);
   ModelList := TListBox.Create(Tab); ModelList.Parent := Tab; ModelList.SetBounds(16, 320, 210, 300); ModelList.Anchors := [akLeft, akBottom]; ModelList.OnClick := @OnModelSelect;
-  AddLabel(Tab, 'Model ID', 250, 320); ModelIdEdit := AddEdit(Tab, 370, 316, 420); ModelIdEdit.Anchors := [akLeft, akBottom, akRight];
-  AddLabel(Tab, '模型显示名', 250, 358); ModelNameEdit := AddEdit(Tab, 370, 354, 420); ModelNameEdit.Anchors := [akLeft, akBottom, akRight];
+  AddLabel(Tab, 'Model ID', 250, 320); ModelIdEdit := AddEdit(Tab, 370, 316, 520); ModelIdEdit.Anchors := [akLeft, akBottom, akRight];
+  AddLabel(Tab, '模型显示名', 250, 358); ModelNameEdit := AddEdit(Tab, 370, 354, 520); ModelNameEdit.Anchors := [akLeft, akBottom, akRight];
   AddButton(Tab, '保存 Model', 370, 396, 130, @OnSaveModel);
   AddButton(Tab, '删除 Model', 510, 396, 130, @OnDeleteModel);
   AddButton(Tab, '测试连通性', 650, 396, 130, @OnTestModelConnectivity);
 
   Tab := AddTab('OpenCode Agent');
   AgentList := TListBox.Create(Tab); AgentList.Parent := Tab; AgentList.SetBounds(16, 16, 220, 610); AgentList.Anchors := [akLeft, akTop, akBottom]; AgentList.OnClick := @OnAgentSelect;
-  AddLabel(Tab, 'Agent ID', 260, 20); AgentIdEdit := AddEdit(Tab, 380, 16, 260);
-  AddLabel(Tab, '描述', 260, 58); AgentDescriptionEdit := AddEdit(Tab, 380, 54, 520);
+  AddLabel(Tab, 'Agent ID', 260, 20); AgentIdEdit := AddEdit(Tab, 380, 16, 520); AgentIdEdit.Anchors := [akLeft, akTop, akRight];
+  AddLabel(Tab, '描述', 260, 58); AgentDescriptionEdit := AddEdit(Tab, 380, 54, 520); AgentDescriptionEdit.Anchors := [akLeft, akTop, akRight];
   AddLabel(Tab, '模式', 260, 96); AgentModeEdit := AddCombo(Tab, 380, 92, 160, AGENT_MODES); AgentModeEdit.Text := 'subagent';
-  AddLabel(Tab, '模型', 260, 134); AgentModelEdit := AddEdit(Tab, 380, 130, 360);
+  AddLabel(Tab, '模型', 260, 134); AgentModelEdit := AddEdit(Tab, 380, 130, 520); AgentModelEdit.Anchors := [akLeft, akTop, akRight];
   AddLabel(Tab, '温度', 260, 172); AgentTempEdit := TFloatSpinEdit.Create(Tab); AgentTempEdit.Parent := Tab; AgentTempEdit.SetBounds(380, 168, 100, 28); AgentTempEdit.Increment := 0.1; AgentTempEdit.DecimalPlaces := 2; AgentTempEdit.MinValue := 0; AgentTempEdit.MaxValue := 2;
   AgentDisabledCheck := TCheckBox.Create(Tab); AgentDisabledCheck.Parent := Tab; AgentDisabledCheck.Caption := '禁用'; AgentDisabledCheck.SetBounds(500, 170, 80, 24);
   AgentHiddenCheck := TCheckBox.Create(Tab); AgentHiddenCheck.Parent := Tab; AgentHiddenCheck.Caption := '隐藏'; AgentHiddenCheck.SetBounds(580, 170, 80, 24);
@@ -263,10 +309,10 @@ begin
 
   Tab := AddTab('OMO Agents / Categories');
   OMOAgentList := TListBox.Create(Tab); OMOAgentList.Parent := Tab; OMOAgentList.SetBounds(16, 16, 210, 280); OMOAgentList.OnClick := @OnOMOAgentSelect;
-  AddLabel(Tab, 'Agent ID', 245, 20); OMOAgentIdEdit := AddEdit(Tab, 365, 16, 220);
+  AddLabel(Tab, 'Agent ID', 245, 20); OMOAgentIdEdit := AddEdit(Tab, 365, 16, 300);
   AddLabel(Tab, '模型', 245, 58); OMOAgentModelEdit := AddEdit(Tab, 365, 54, 300);
-  AddLabel(Tab, 'Category', 245, 96); OMOAgentCategoryEdit := AddCombo(Tab, 365, 92, 220, OMO_CATEGORY_PRESETS);
-  AddLabel(Tab, 'Variant', 245, 134); OMOAgentVariantEdit := AddCombo(Tab, 365, 130, 120, OMO_VARIANT_PRESETS);
+  AddLabel(Tab, 'Category', 245, 96); OMOAgentCategoryEdit := AddCombo(Tab, 365, 92, 300, OMO_CATEGORY_PRESETS);
+  AddLabel(Tab, 'Variant', 245, 134); OMOAgentVariantEdit := AddCombo(Tab, 365, 130, 300, OMO_VARIANT_PRESETS);
   AddLabel(Tab, '温度', 245, 172); OMOAgentTempEdit := TFloatSpinEdit.Create(Tab); OMOAgentTempEdit.Parent := Tab; OMOAgentTempEdit.SetBounds(365, 168, 100, 28); OMOAgentTempEdit.Increment := 0.1; OMOAgentTempEdit.DecimalPlaces := 2; OMOAgentTempEdit.MaxValue := 2;
   OMOAgentDisabledCheck := TCheckBox.Create(Tab); OMOAgentDisabledCheck.Parent := Tab; OMOAgentDisabledCheck.Caption := '禁用'; OMOAgentDisabledCheck.SetBounds(490, 170, 80, 24);
   AddLabel(Tab, 'Thinking', 245, 210); OMOAgentThinkingEdit := AddCombo(Tab, 365, 206, 120, OMO_THINKING_OPTIONS);
@@ -275,16 +321,16 @@ begin
   AddButton(Tab, '保存 OMO Agent', 365, 245, 150, @OnSaveOMOAgent);
   OMOAgentDeleteButton := AddButton(Tab, '删除 OMO Agent', 525, 245, 150, @OnDeleteOMOAgent);
   OMOCategoryList := TListBox.Create(Tab); OMOCategoryList.Parent := Tab; OMOCategoryList.SetBounds(16, 330, 210, 280); OMOCategoryList.OnClick := @OnOMOCategorySelect;
-  AddLabel(Tab, 'Category ID', 245, 334); OMOCategoryIdEdit := AddEdit(Tab, 365, 330, 220);
+  AddLabel(Tab, 'Category ID', 245, 334); OMOCategoryIdEdit := AddEdit(Tab, 365, 330, 300);
   AddLabel(Tab, '模型', 245, 372); OMOCategoryModelEdit := AddEdit(Tab, 365, 368, 300);
   AddLabel(Tab, '描述', 245, 410); OMOCategoryDescEdit := AddEdit(Tab, 365, 406, 300);
-  AddLabel(Tab, 'Variant', 245, 448); OMOCategoryVariantEdit := AddCombo(Tab, 365, 444, 120, OMO_VARIANT_PRESETS);
-  OMOCategoryDisabledCheck := TCheckBox.Create(Tab); OMOCategoryDisabledCheck.Parent := Tab; OMOCategoryDisabledCheck.Caption := '禁用'; OMOCategoryDisabledCheck.SetBounds(500, 446, 80, 24);
-  AddLabel(Tab, 'Thinking', 245, 486); OMOCategoryThinkingEdit := AddCombo(Tab, 365, 482, 120, OMO_THINKING_OPTIONS);
-  AddLabel(Tab, 'Reasoning', 500, 486); OMOCategoryReasoningEdit := AddCombo(Tab, 590, 482, 120, OMO_REASONING_EFFORTS);
+  AddLabel(Tab, 'Variant', 245, 448); OMOCategoryVariantEdit := AddCombo(Tab, 365, 444, 300, OMO_VARIANT_PRESETS);
+  OMOCategoryDisabledCheck := TCheckBox.Create(Tab); OMOCategoryDisabledCheck.Parent := Tab; OMOCategoryDisabledCheck.Caption := '禁用'; OMOCategoryDisabledCheck.SetBounds(365, 482, 80, 24);
+  AddLabel(Tab, 'Thinking', 245, 524); OMOCategoryThinkingEdit := AddCombo(Tab, 365, 520, 120, OMO_THINKING_OPTIONS);
+  AddLabel(Tab, 'Reasoning', 500, 524); OMOCategoryReasoningEdit := AddCombo(Tab, 590, 520, 120, OMO_REASONING_EFFORTS);
   OMOCategoryPromptMemo := TMemo.Create(Tab); OMOCategoryPromptMemo.Parent := Tab; OMOCategoryPromptMemo.SetBounds(680, 330, 390, 180); OMOCategoryPromptMemo.ScrollBars := ssAutoBoth; OMOCategoryPromptMemo.Anchors := [akLeft, akTop, akRight];
-  AddButton(Tab, '保存 Category', 365, 530, 150, @OnSaveOMOCategory);
-  AddButton(Tab, '删除 Category', 525, 530, 150, @OnDeleteOMOCategory);
+  AddButton(Tab, '保存 Category', 365, 560, 150, @OnSaveOMOCategory);
+  AddButton(Tab, '删除 Category', 525, 560, 150, @OnDeleteOMOCategory);
 
   Tab := AddTab('MCP / Plugin');
   McpList := TListBox.Create(Tab); McpList.Parent := Tab; McpList.SetBounds(16, 16, 220, 300); McpList.OnClick := @OnMcpSelect;
@@ -310,6 +356,8 @@ begin
   RawMemo := TMemo.Create(Tab); RawMemo.Parent := Tab; RawMemo.SetBounds(16, 16, 520, 590); RawMemo.ScrollBars := ssAutoBoth; RawMemo.Anchors := [akLeft, akTop, akBottom];
   OMORawMemo := TMemo.Create(Tab); OMORawMemo.Parent := Tab; OMORawMemo.SetBounds(552, 16, 520, 590); OMORawMemo.ScrollBars := ssAutoBoth; OMORawMemo.Anchors := [akLeft, akTop, akRight, akBottom];
   AddButton(Tab, '从原始 JSON 应用', 16, 620, 160, @OnApplyRaw);
+  PageControl.ActivePageIndex := 0;
+  UpdateNavigation;
 end;
 
 procedure TMainForm.LoadDefaultConfigs;
@@ -371,6 +419,14 @@ begin
     Result := '';
 end;
 
+function TMainForm.SelectedModelId: string;
+begin
+  if (ModelList.ItemIndex >= 0) and (ModelList.ItemIndex < FModelListKeys.Count) then
+    Result := FModelListKeys[ModelList.ItemIndex]
+  else
+    Result := ModelIdEdit.Text;
+end;
+
 function TMainForm.SelectedTools: string;
 var
   I: Integer;
@@ -425,6 +481,7 @@ begin
     L.Free;
   end;
   ModelList.Clear;
+  FModelListKeys.Clear;
 end;
 
 procedure TMainForm.RefreshAgentList;
@@ -521,6 +578,15 @@ begin
   end;
 end;
 
+procedure TMainForm.OnNavButtonClick(Sender: TObject);
+begin
+  if Sender is TButton then
+  begin
+    PageControl.ActivePageIndex := TButton(Sender).Tag;
+    UpdateNavigation;
+  end;
+end;
+
 procedure TMainForm.OnSaveConfig(Sender: TObject);
 begin
   FConfig.SaveToFile(ConfigPathEdit.Text);
@@ -549,8 +615,10 @@ end;
 
 procedure TMainForm.OnProviderSelect(Sender: TObject);
 var
-  Provider, Options: TJSONObject;
+  Provider, Options, Models, ModelObj: TJSONObject;
   L: TStringList;
+  I: Integer;
+  ModelId, DisplayName: string;
 begin
   ProviderIdEdit.Text := SelectedText(ProviderList);
   Provider := ObjectInSection(FConfig.Data, 'provider', ProviderIdEdit.Text);
@@ -567,7 +635,26 @@ begin
   end;
   L := FConfig.ModelIds(ProviderIdEdit.Text);
   try
-    ModelList.Items.Assign(L);
+    ModelList.Clear;
+    FModelListKeys.Clear;
+    Models := nil;
+    if Assigned(Provider) and (Provider.Find('models') is TJSONObject) then
+      Models := TJSONObject(Provider.Find('models'));
+    for I := 0 to L.Count - 1 do
+    begin
+      ModelId := L[I];
+      DisplayName := '';
+      if Assigned(Models) and (Models.Find(ModelId) is TJSONObject) then
+      begin
+        ModelObj := TJSONObject(Models.Find(ModelId));
+        DisplayName := ModelObj.Get('name', '');
+      end;
+      if DisplayName <> '' then
+        ModelList.Items.Add(DisplayName + ' (' + ModelId + ')')
+      else
+        ModelList.Items.Add(ModelId);
+      FModelListKeys.Add(ModelId);
+    end;
   finally
     L.Free;
   end;
@@ -589,7 +676,7 @@ procedure TMainForm.OnModelSelect(Sender: TObject);
 var
   Provider, Models, ModelObj: TJSONObject;
 begin
-  ModelIdEdit.Text := SelectedText(ModelList);
+  ModelIdEdit.Text := SelectedModelId;
   ModelNameEdit.Text := '';
   Provider := ObjectInSection(FConfig.Data, 'provider', ProviderIdEdit.Text);
   if Assigned(Provider) and (Provider.Find('models') is TJSONObject) then
@@ -623,7 +710,7 @@ end;
 
 procedure TMainForm.OnDeleteModel(Sender: TObject);
 begin
-  FConfig.DeleteModel(ProviderIdEdit.Text, ModelIdEdit.Text);
+  FConfig.DeleteModel(ProviderIdEdit.Text, SelectedModelId);
   RefreshAll;
 end;
 

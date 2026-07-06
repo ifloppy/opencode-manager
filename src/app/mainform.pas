@@ -7,7 +7,7 @@ interface
 uses
   Classes, SysUtils, fpjson, Forms, Controls, Graphics, Dialogs, StdCtrls,
   ComCtrls, ExtCtrls, Spin, oc_config, oc_omo_config, oc_paths, oc_profiles,
-  oc_presets, oc_http;
+  oc_presets, oc_http, oc_sessions;
 
 type
   { TMainForm }
@@ -18,6 +18,7 @@ type
     FOMO: TOMOConfig;
     FProfiles: TProfileManager;
     FModelListKeys: TStringList;
+    FSessionSummary: TSessionUsageSummary;
     NavPanel: TPanel;
     PageControl: TPageControl;
     Status: TStatusBar;
@@ -27,6 +28,8 @@ type
     ValidationMemo: TMemo;
     RawMemo: TMemo;
     OMORawMemo: TMemo;
+    OverviewProviderLabel, OverviewModelLabel, OverviewAgentLabel, OverviewMcpLabel: TLabel;
+    OverviewPluginLabel, OverviewOMOLabel, OverviewTokenLabel: TLabel;
 
     ProviderList, ModelList, AgentList, McpList, PluginList, ProfileList: TListBox;
     ProviderNameEdit, ProviderBaseUrlEdit, ProviderApiKeyEdit: TEdit;
@@ -39,6 +42,7 @@ type
     AgentIdEdit, AgentDescriptionEdit, AgentModelEdit, AgentColorEdit: TEdit;
     AgentModeEdit: TComboBox;
     AgentPromptMemo: TMemo;
+    AgentIdLabel, AgentDescriptionLabel, AgentModeLabel, AgentModelLabel, AgentTempLabel: TLabel;
     AgentColorLabel, AgentMaxStepsLabel, AgentToolsLabel, AgentPromptLabel: TLabel;
     AgentTempEdit: TFloatSpinEdit;
     AgentMaxStepsEdit: TSpinEdit;
@@ -58,15 +62,24 @@ type
     OMOAgentIdEdit, OMOAgentModelEdit: TEdit;
     OMOAgentCategoryEdit, OMOAgentVariantEdit, OMOAgentThinkingEdit, OMOAgentReasoningEdit: TComboBox;
     OMOAgentPromptMemo: TMemo;
+    OMOAgentIdLabel, OMOAgentModelLabel, OMOAgentCategoryLabel, OMOAgentVariantLabel: TLabel;
+    OMOAgentTempLabel, OMOAgentThinkingLabel, OMOAgentReasoningLabel: TLabel;
     OMOAgentTempEdit: TFloatSpinEdit;
     OMOAgentDisabledCheck: TCheckBox;
     OMOAgentSaveButton, OMOAgentDeleteButton: TButton;
     OMOCategoryIdEdit, OMOCategoryModelEdit, OMOCategoryDescEdit: TEdit;
     OMOCategoryVariantEdit, OMOCategoryThinkingEdit, OMOCategoryReasoningEdit: TComboBox;
     OMOCategoryPromptMemo: TMemo;
+    OMOCategoryIdLabel, OMOCategoryModelLabel, OMOCategoryDescLabel, OMOCategoryVariantLabel: TLabel;
+    OMOCategoryThinkingLabel, OMOCategoryReasoningLabel: TLabel;
     OMOCategoryDisabledCheck: TCheckBox;
     OMOCategorySaveButton, OMOCategoryDeleteButton: TButton;
     RawApplyButton: TButton;
+    SessionPathEdit: TEdit;
+    SessionProjectList, SessionList, SessionModelList: TListBox;
+    SessionSummaryMemo: TMemo;
+    SessionChart: TPaintBox;
+    SessionRefreshButton: TButton;
 
     procedure BuildUi;
     procedure AdjustResponsiveLayout;
@@ -89,6 +102,10 @@ type
     procedure RefreshPluginList;
     procedure RefreshProfiles;
     procedure RefreshOMOLists;
+    procedure RefreshOverviewStats;
+    procedure RefreshSessionSummary;
+    procedure PopulateSessionLists;
+    function TotalModelCount: Integer;
     function SelectedText(List: TListBox): string;
     function SelectedModelId: string;
     function SelectedTools: string;
@@ -129,6 +146,10 @@ type
     procedure OnOMOCategorySelect(Sender: TObject);
     procedure OnSaveOMOCategory(Sender: TObject);
     procedure OnDeleteOMOCategory(Sender: TObject);
+    procedure OnRefreshSessions(Sender: TObject);
+    procedure OnSessionProjectSelect(Sender: TObject);
+    procedure OnSessionSelect(Sender: TObject);
+    procedure OnTokenChartPaint(Sender: TObject);
   public
     constructor Create(TheOwner: TComponent); override;
     destructor Destroy; override;
@@ -145,8 +166,8 @@ begin
   Caption := 'OpenCode 配置管理器';
   Width := 1180;
   Height := 780;
-  Constraints.MinWidth := 1040;
-  Constraints.MinHeight := 700;
+  Constraints.MinWidth := 1180;
+  Constraints.MinHeight := 720;
   Position := poScreenCenter;
   FConfig := TOpenCodeConfig.Create;
   FOMO := TOMOConfig.Create;
@@ -269,19 +290,26 @@ begin
   Status.Align := alBottom;
 
   Tab := AddTab('概览');
-  AddLabel(Tab, 'OpenCode 配置', 16, 20);
-  ConfigPathEdit := AddEdit(Tab, 130, 16, 760);
+  OverviewProviderLabel := AddLabel(Tab, 'Provider: 0', 16, 18);
+  OverviewModelLabel := AddLabel(Tab, 'Model: 0', 180, 18);
+  OverviewAgentLabel := AddLabel(Tab, 'Agent: 0', 344, 18);
+  OverviewMcpLabel := AddLabel(Tab, 'MCP: 0', 508, 18);
+  OverviewPluginLabel := AddLabel(Tab, 'Plugin: 0', 672, 18);
+  OverviewOMOLabel := AddLabel(Tab, 'OMO: 0 / 0', 836, 18);
+  OverviewTokenLabel := AddLabel(Tab, '总 Token: 0', 16, 54);
+  AddLabel(Tab, 'OpenCode 配置', 16, 94);
+  ConfigPathEdit := AddEdit(Tab, 130, 90, 760);
   ConfigPathEdit.Anchors := [akLeft, akTop, akRight];
-  AddButton(Tab, '打开', 900, 15, 80, @OnOpenConfig);
-  AddButton(Tab, '保存全部', 990, 15, 100, @OnSaveConfig);
-  AddLabel(Tab, 'OMO 配置', 16, 58);
-  OMOPathEdit := AddEdit(Tab, 130, 54, 760);
+  AddButton(Tab, '打开', 900, 89, 80, @OnOpenConfig);
+  AddButton(Tab, '保存全部', 990, 89, 100, @OnSaveConfig);
+  AddLabel(Tab, 'OMO 配置', 16, 132);
+  OMOPathEdit := AddEdit(Tab, 130, 128, 760);
   OMOPathEdit.Anchors := [akLeft, akTop, akRight];
-  AddButton(Tab, '重新加载', 900, 53, 100, @OnReload);
-  AddButton(Tab, '校验', 1010, 53, 80, @OnValidate);
+  AddButton(Tab, '重新加载', 900, 127, 100, @OnReload);
+  AddButton(Tab, '校验', 1010, 127, 80, @OnValidate);
   ValidationMemo := TMemo.Create(Tab);
   ValidationMemo.Parent := Tab;
-  ValidationMemo.SetBounds(16, 100, 1070, 560);
+  ValidationMemo.SetBounds(16, 174, 1070, 486);
   ValidationMemo.Anchors := [akLeft, akTop, akRight, akBottom];
   ValidationMemo.Hint := '配置路径、校验结果和结构问题';
   ValidationMemo.ShowHint := True;
@@ -308,11 +336,11 @@ begin
 
   Tab := AddTab('OpenCode Agent');
   AgentList := TListBox.Create(Tab); AgentList.Parent := Tab; AgentList.SetBounds(16, 16, 220, 610); AgentList.OnClick := @OnAgentSelect;
-  AddLabel(Tab, 'Agent ID', 260, 20); AgentIdEdit := AddEdit(Tab, 380, 16, 520); AgentIdEdit.Anchors := [akLeft, akTop, akRight];
-  AddLabel(Tab, '描述', 260, 58); AgentDescriptionEdit := AddEdit(Tab, 380, 54, 520); AgentDescriptionEdit.Anchors := [akLeft, akTop, akRight];
-  AddLabel(Tab, '模式', 260, 96); AgentModeEdit := AddCombo(Tab, 380, 92, 160, AGENT_MODES); AgentModeEdit.Text := 'subagent';
-  AddLabel(Tab, '模型', 260, 134); AgentModelEdit := AddEdit(Tab, 380, 130, 520); AgentModelEdit.Anchors := [akLeft, akTop, akRight];
-  AddLabel(Tab, '温度', 260, 172); AgentTempEdit := TFloatSpinEdit.Create(Tab); AgentTempEdit.Parent := Tab; AgentTempEdit.SetBounds(380, 168, 100, 28); AgentTempEdit.Increment := 0.1; AgentTempEdit.DecimalPlaces := 2; AgentTempEdit.MinValue := 0; AgentTempEdit.MaxValue := 2;
+  AgentIdLabel := AddLabel(Tab, 'Agent ID', 260, 20); AgentIdEdit := AddEdit(Tab, 380, 16, 520);
+  AgentDescriptionLabel := AddLabel(Tab, '描述', 260, 58); AgentDescriptionEdit := AddEdit(Tab, 380, 54, 520);
+  AgentModeLabel := AddLabel(Tab, '模式', 260, 96); AgentModeEdit := AddCombo(Tab, 380, 92, 160, AGENT_MODES); AgentModeEdit.Text := 'subagent';
+  AgentModelLabel := AddLabel(Tab, '模型', 260, 134); AgentModelEdit := AddEdit(Tab, 380, 130, 520);
+  AgentTempLabel := AddLabel(Tab, '温度', 260, 172); AgentTempEdit := TFloatSpinEdit.Create(Tab); AgentTempEdit.Parent := Tab; AgentTempEdit.SetBounds(380, 168, 100, 28); AgentTempEdit.Increment := 0.1; AgentTempEdit.DecimalPlaces := 2; AgentTempEdit.MinValue := 0; AgentTempEdit.MaxValue := 2;
   AgentDisabledCheck := TCheckBox.Create(Tab); AgentDisabledCheck.Parent := Tab; AgentDisabledCheck.Caption := '禁用'; AgentDisabledCheck.SetBounds(500, 170, 80, 24);
   AgentHiddenCheck := TCheckBox.Create(Tab); AgentHiddenCheck.Parent := Tab; AgentHiddenCheck.Caption := '隐藏'; AgentHiddenCheck.SetBounds(580, 170, 80, 24);
   AgentColorLabel := AddLabel(Tab, '颜色', 610, 172); AgentColorEdit := AddEdit(Tab, 660, 168, 90);
@@ -325,32 +353,32 @@ begin
     AgentToolChecks[I].Caption := AGENT_TOOLS[I];
     AgentToolChecks[I].SetBounds(380 + (I mod 4) * 120, 210 + (I div 4) * 26, 115, 24);
   end;
-  AgentPromptLabel := AddLabel(Tab, 'Prompt', 260, 300); AgentPromptMemo := TMemo.Create(Tab); AgentPromptMemo.Parent := Tab; AgentPromptMemo.SetBounds(380, 300, 620, 210); AgentPromptMemo.ScrollBars := ssAutoBoth; AgentPromptMemo.Anchors := [akLeft, akTop, akRight, akBottom];
+  AgentPromptLabel := AddLabel(Tab, 'Prompt', 260, 300); AgentPromptMemo := TMemo.Create(Tab); AgentPromptMemo.Parent := Tab; AgentPromptMemo.SetBounds(380, 300, 620, 210); AgentPromptMemo.ScrollBars := ssAutoBoth;
   AgentSaveButton := AddButton(Tab, '保存 Agent', 380, 530, 130, @OnSaveAgent);
   AgentDeleteButton := AddButton(Tab, '删除 Agent', 520, 530, 130, @OnDeleteAgent);
 
   Tab := AddTab('OMO Agents / Categories');
   OMOAgentList := TListBox.Create(Tab); OMOAgentList.Parent := Tab; OMOAgentList.SetBounds(16, 16, 210, 280); OMOAgentList.Hint := 'OMO Agent 列表，内置项可编辑或禁用但不能删除'; OMOAgentList.ShowHint := True; OMOAgentList.OnClick := @OnOMOAgentSelect;
-  AddLabel(Tab, 'Agent ID', 245, 20); OMOAgentIdEdit := AddEdit(Tab, 365, 16, 300);
-  AddLabel(Tab, '模型', 245, 58); OMOAgentModelEdit := AddEdit(Tab, 365, 54, 300);
-  AddLabel(Tab, 'Category', 245, 96); OMOAgentCategoryEdit := AddCombo(Tab, 365, 92, 300, OMO_CATEGORY_PRESETS);
-  AddLabel(Tab, 'Variant', 245, 134); OMOAgentVariantEdit := AddCombo(Tab, 365, 130, 300, OMO_VARIANT_PRESETS);
-  AddLabel(Tab, '温度', 245, 172); OMOAgentTempEdit := TFloatSpinEdit.Create(Tab); OMOAgentTempEdit.Parent := Tab; OMOAgentTempEdit.SetBounds(365, 168, 100, 28); OMOAgentTempEdit.Increment := 0.1; OMOAgentTempEdit.DecimalPlaces := 2; OMOAgentTempEdit.MaxValue := 2;
+  OMOAgentIdLabel := AddLabel(Tab, 'Agent ID', 245, 20); OMOAgentIdEdit := AddEdit(Tab, 365, 16, 300);
+  OMOAgentModelLabel := AddLabel(Tab, '模型', 245, 58); OMOAgentModelEdit := AddEdit(Tab, 365, 54, 300);
+  OMOAgentCategoryLabel := AddLabel(Tab, 'Category', 245, 96); OMOAgentCategoryEdit := AddCombo(Tab, 365, 92, 300, OMO_CATEGORY_PRESETS);
+  OMOAgentVariantLabel := AddLabel(Tab, 'Variant', 245, 134); OMOAgentVariantEdit := AddCombo(Tab, 365, 130, 300, OMO_VARIANT_PRESETS);
+  OMOAgentTempLabel := AddLabel(Tab, '温度', 245, 172); OMOAgentTempEdit := TFloatSpinEdit.Create(Tab); OMOAgentTempEdit.Parent := Tab; OMOAgentTempEdit.SetBounds(365, 168, 100, 28); OMOAgentTempEdit.Increment := 0.1; OMOAgentTempEdit.DecimalPlaces := 2; OMOAgentTempEdit.MaxValue := 2;
   OMOAgentDisabledCheck := TCheckBox.Create(Tab); OMOAgentDisabledCheck.Parent := Tab; OMOAgentDisabledCheck.Caption := '禁用'; OMOAgentDisabledCheck.SetBounds(490, 170, 80, 24);
-  AddLabel(Tab, 'Thinking', 245, 210); OMOAgentThinkingEdit := AddCombo(Tab, 365, 206, 120, OMO_THINKING_OPTIONS);
-  AddLabel(Tab, 'Reasoning', 500, 210); OMOAgentReasoningEdit := AddCombo(Tab, 590, 206, 120, OMO_REASONING_EFFORTS);
-  OMOAgentPromptMemo := TMemo.Create(Tab); OMOAgentPromptMemo.Parent := Tab; OMOAgentPromptMemo.SetBounds(740, 16, 390, 250); OMOAgentPromptMemo.ScrollBars := ssAutoBoth; OMOAgentPromptMemo.Anchors := [akLeft, akTop, akRight, akBottom]; OMOAgentPromptMemo.Hint := 'OMO Agent prompt_append'; OMOAgentPromptMemo.ShowHint := True;
+  OMOAgentThinkingLabel := AddLabel(Tab, 'Thinking', 245, 210); OMOAgentThinkingEdit := AddCombo(Tab, 365, 206, 120, OMO_THINKING_OPTIONS);
+  OMOAgentReasoningLabel := AddLabel(Tab, 'Reasoning', 500, 210); OMOAgentReasoningEdit := AddCombo(Tab, 590, 206, 120, OMO_REASONING_EFFORTS);
+  OMOAgentPromptMemo := TMemo.Create(Tab); OMOAgentPromptMemo.Parent := Tab; OMOAgentPromptMemo.SetBounds(740, 16, 390, 250); OMOAgentPromptMemo.ScrollBars := ssAutoBoth; OMOAgentPromptMemo.Hint := 'OMO Agent prompt_append'; OMOAgentPromptMemo.ShowHint := True;
   OMOAgentSaveButton := AddButton(Tab, '保存 OMO Agent', 365, 245, 150, @OnSaveOMOAgent);
   OMOAgentDeleteButton := AddButton(Tab, '删除 OMO Agent', 525, 245, 150, @OnDeleteOMOAgent);
   OMOCategoryList := TListBox.Create(Tab); OMOCategoryList.Parent := Tab; OMOCategoryList.SetBounds(16, 330, 210, 280); OMOCategoryList.Hint := 'OMO Category 列表'; OMOCategoryList.ShowHint := True; OMOCategoryList.OnClick := @OnOMOCategorySelect;
-  AddLabel(Tab, 'Category ID', 245, 334); OMOCategoryIdEdit := AddEdit(Tab, 365, 330, 300);
-  AddLabel(Tab, '模型', 245, 372); OMOCategoryModelEdit := AddEdit(Tab, 365, 368, 300);
-  AddLabel(Tab, '描述', 245, 410); OMOCategoryDescEdit := AddEdit(Tab, 365, 406, 300);
-  AddLabel(Tab, 'Variant', 245, 448); OMOCategoryVariantEdit := AddCombo(Tab, 365, 444, 300, OMO_VARIANT_PRESETS);
+  OMOCategoryIdLabel := AddLabel(Tab, 'Category ID', 245, 334); OMOCategoryIdEdit := AddEdit(Tab, 365, 330, 300);
+  OMOCategoryModelLabel := AddLabel(Tab, '模型', 245, 372); OMOCategoryModelEdit := AddEdit(Tab, 365, 368, 300);
+  OMOCategoryDescLabel := AddLabel(Tab, '描述', 245, 410); OMOCategoryDescEdit := AddEdit(Tab, 365, 406, 300);
+  OMOCategoryVariantLabel := AddLabel(Tab, 'Variant', 245, 448); OMOCategoryVariantEdit := AddCombo(Tab, 365, 444, 300, OMO_VARIANT_PRESETS);
   OMOCategoryDisabledCheck := TCheckBox.Create(Tab); OMOCategoryDisabledCheck.Parent := Tab; OMOCategoryDisabledCheck.Caption := '禁用'; OMOCategoryDisabledCheck.SetBounds(365, 482, 80, 24);
-  AddLabel(Tab, 'Thinking', 245, 524); OMOCategoryThinkingEdit := AddCombo(Tab, 365, 520, 120, OMO_THINKING_OPTIONS);
-  AddLabel(Tab, 'Reasoning', 500, 524); OMOCategoryReasoningEdit := AddCombo(Tab, 590, 520, 120, OMO_REASONING_EFFORTS);
-  OMOCategoryPromptMemo := TMemo.Create(Tab); OMOCategoryPromptMemo.Parent := Tab; OMOCategoryPromptMemo.SetBounds(740, 330, 390, 250); OMOCategoryPromptMemo.ScrollBars := ssAutoBoth; OMOCategoryPromptMemo.Anchors := [akLeft, akBottom, akRight]; OMOCategoryPromptMemo.Hint := 'OMO Category prompt_append'; OMOCategoryPromptMemo.ShowHint := True;
+  OMOCategoryThinkingLabel := AddLabel(Tab, 'Thinking', 245, 524); OMOCategoryThinkingEdit := AddCombo(Tab, 365, 520, 120, OMO_THINKING_OPTIONS);
+  OMOCategoryReasoningLabel := AddLabel(Tab, 'Reasoning', 500, 524); OMOCategoryReasoningEdit := AddCombo(Tab, 590, 520, 120, OMO_REASONING_EFFORTS);
+  OMOCategoryPromptMemo := TMemo.Create(Tab); OMOCategoryPromptMemo.Parent := Tab; OMOCategoryPromptMemo.SetBounds(740, 330, 390, 250); OMOCategoryPromptMemo.ScrollBars := ssAutoBoth; OMOCategoryPromptMemo.Hint := 'OMO Category prompt_append'; OMOCategoryPromptMemo.ShowHint := True;
   OMOCategorySaveButton := AddButton(Tab, '保存 Category', 365, 560, 150, @OnSaveOMOCategory);
   OMOCategoryDeleteButton := AddButton(Tab, '删除 Category', 525, 560, 150, @OnDeleteOMOCategory);
 
@@ -376,6 +404,15 @@ begin
   AddButton(Tab, '删除 Profile', 600, 58, 130, @OnDeleteProfile);
   AddLabel(Tab, 'Profile 根目录: ' + FProfiles.RootDir, 310, 110);
 
+  Tab := AddTab('聊天记录');
+  AddLabel(Tab, '会话目录', 16, 20); SessionPathEdit := AddEdit(Tab, 130, 16, 700); SessionPathEdit.Anchors := [akLeft, akTop, akRight];
+  SessionRefreshButton := AddButton(Tab, '刷新统计', 850, 15, 120, @OnRefreshSessions);
+  SessionProjectList := TListBox.Create(Tab); SessionProjectList.Parent := Tab; SessionProjectList.SetBounds(16, 64, 220, 260); SessionProjectList.OnClick := @OnSessionProjectSelect;
+  SessionList := TListBox.Create(Tab); SessionList.Parent := Tab; SessionList.SetBounds(252, 64, 260, 260); SessionList.OnClick := @OnSessionSelect;
+  SessionModelList := TListBox.Create(Tab); SessionModelList.Parent := Tab; SessionModelList.SetBounds(16, 342, 496, 260);
+  SessionSummaryMemo := TMemo.Create(Tab); SessionSummaryMemo.Parent := Tab; SessionSummaryMemo.SetBounds(528, 64, 540, 180); SessionSummaryMemo.ReadOnly := True; SessionSummaryMemo.ScrollBars := ssAutoVertical;
+  SessionChart := TPaintBox.Create(Tab); SessionChart.Parent := Tab; SessionChart.SetBounds(528, 260, 540, 342); SessionChart.OnPaint := @OnTokenChartPaint;
+
   Tab := AddTab('原始 JSON');
   RawMemo := TMemo.Create(Tab); RawMemo.Parent := Tab; RawMemo.SetBounds(16, 16, 520, 590); RawMemo.ScrollBars := ssAutoBoth;
   OMORawMemo := TMemo.Create(Tab); OMORawMemo.Parent := Tab; OMORawMemo.SetBounds(552, 16, 520, 590); OMORawMemo.ScrollBars := ssAutoBoth;
@@ -391,6 +428,12 @@ var
   ButtonTop, PromptTop, PromptH, RightX, RightW, SectionH, FormW, ModelTop, PluginTop: Integer;
   ToolCols, ToolW, ToolX, ToolY, I: Integer;
 begin
+  if Assigned(ValidationMemo) then
+  begin
+    W := ValidationMemo.Parent.ClientWidth;
+    ValidationMemo.SetBounds(16, 174, W - 32, ValidationMemo.Parent.ClientHeight - 190);
+  end;
+
   if Assigned(ProviderList) then
   begin
     W := ProviderList.Parent.ClientWidth;
@@ -438,10 +481,15 @@ begin
     if FieldW < 420 then
       FieldW := 420;
     AgentList.SetBounds(16, 16, 220, H - 32);
+    AgentIdLabel.SetBounds(260, 20, 120, 24);
     AgentIdEdit.SetBounds(FieldX, 16, FieldW, 28);
+    AgentDescriptionLabel.SetBounds(260, 58, 120, 24);
     AgentDescriptionEdit.SetBounds(FieldX, 54, FieldW, 28);
+    AgentModeLabel.SetBounds(260, 96, 120, 24);
     AgentModeEdit.SetBounds(FieldX, 92, 160, 28);
+    AgentModelLabel.SetBounds(260, 134, 120, 24);
     AgentModelEdit.SetBounds(FieldX, 130, FieldW, 28);
+    AgentTempLabel.SetBounds(260, 172, 120, 24);
     AgentTempEdit.SetBounds(FieldX, 168, 100, 28);
     AgentDisabledCheck.SetBounds(FieldX + 120, 170, 80, 24);
     AgentHiddenCheck.SetBounds(FieldX + 210, 170, 80, 24);
@@ -492,13 +540,13 @@ begin
     OMOAgentList.SetBounds(16, 16, 210, 280);
     OMOCategoryList.SetBounds(16, 330, 210, H - 346);
     FormW := 300;
-    RightX := 740;
-    if W < 1040 then
-      RightX := 680;
+    RightX := W - 360;
+    if RightX < 720 then
+      RightX := 720;
     if W - RightX < 240 then
-      RightX := 665;
-    if RightX < 665 then
-      RightX := 665;
+      RightX := W - 256;
+    if RightX < 700 then
+      RightX := 700;
     RightW := W - RightX - 16;
     if RightW < 220 then
       RightW := 220;
@@ -506,23 +554,36 @@ begin
       FormW := RightX - 385;
     if FormW < 240 then
       FormW := 240;
+    OMOAgentIdLabel.SetBounds(245, 20, 120, 24);
     OMOAgentIdEdit.SetBounds(365, 16, FormW, 28);
+    OMOAgentModelLabel.SetBounds(245, 58, 120, 24);
     OMOAgentModelEdit.SetBounds(365, 54, FormW, 28);
+    OMOAgentCategoryLabel.SetBounds(245, 96, 120, 24);
     OMOAgentCategoryEdit.SetBounds(365, 92, FormW, 28);
+    OMOAgentVariantLabel.SetBounds(245, 134, 120, 24);
     OMOAgentVariantEdit.SetBounds(365, 130, FormW, 28);
+    OMOAgentTempLabel.SetBounds(245, 172, 120, 24);
     OMOAgentTempEdit.SetBounds(365, 168, 100, 28);
     OMOAgentDisabledCheck.SetBounds(490, 170, 80, 24);
+    OMOAgentThinkingLabel.SetBounds(245, 210, 120, 24);
     OMOAgentThinkingEdit.SetBounds(365, 206, 120, 28);
-    OMOAgentReasoningEdit.SetBounds(590, 206, 120, 28);
+    OMOAgentReasoningLabel.SetBounds(500, 210, 80, 24);
+    OMOAgentReasoningEdit.SetBounds(580, 206, 110, 28);
     OMOAgentSaveButton.SetBounds(365, 245, 150, 30);
     OMOAgentDeleteButton.SetBounds(525, 245, 150, 30);
+    OMOCategoryIdLabel.SetBounds(245, 334, 120, 24);
     OMOCategoryIdEdit.SetBounds(365, 330, FormW, 28);
+    OMOCategoryModelLabel.SetBounds(245, 372, 120, 24);
     OMOCategoryModelEdit.SetBounds(365, 368, FormW, 28);
+    OMOCategoryDescLabel.SetBounds(245, 410, 120, 24);
     OMOCategoryDescEdit.SetBounds(365, 406, FormW, 28);
+    OMOCategoryVariantLabel.SetBounds(245, 448, 120, 24);
     OMOCategoryVariantEdit.SetBounds(365, 444, FormW, 28);
     OMOCategoryDisabledCheck.SetBounds(365, 482, 80, 24);
+    OMOCategoryThinkingLabel.SetBounds(245, 524, 120, 24);
     OMOCategoryThinkingEdit.SetBounds(365, 520, 120, 28);
-    OMOCategoryReasoningEdit.SetBounds(590, 520, 120, 28);
+    OMOCategoryReasoningLabel.SetBounds(500, 524, 80, 24);
+    OMOCategoryReasoningEdit.SetBounds(580, 520, 110, 28);
     OMOCategorySaveButton.SetBounds(365, 560, 150, 30);
     OMOCategoryDeleteButton.SetBounds(525, 560, 150, 30);
     OMOAgentPromptMemo.SetBounds(RightX, 16, RightW, 280);
@@ -559,6 +620,22 @@ begin
     PluginSaveButton.SetBounds(FieldX + 150, PluginTop + 40, 130, 30);
     PluginDeleteButton.SetBounds(FieldX + 300, PluginTop + 40, 130, 30);
   end;
+
+  if Assigned(SessionProjectList) then
+  begin
+    W := SessionProjectList.Parent.ClientWidth;
+    H := SessionProjectList.Parent.ClientHeight;
+    SessionPathEdit.SetBounds(130, 16, W - 280, 28);
+    SessionRefreshButton.SetBounds(W - 136, 15, 120, 30);
+    SectionH := (H - 110) div 2;
+    if SectionH < 180 then
+      SectionH := 180;
+    SessionProjectList.SetBounds(16, 64, 220, SectionH);
+    SessionList.SetBounds(252, 64, 260, SectionH);
+    SessionModelList.SetBounds(16, 84 + SectionH, 496, H - SectionH - 100);
+    SessionSummaryMemo.SetBounds(528, 64, W - 544, 180);
+    SessionChart.SetBounds(528, 260, W - 544, H - 276);
+  end;
 end;
 
 procedure TMainForm.LoadDefaultConfigs;
@@ -580,7 +657,125 @@ begin
   RefreshOMOLists;
   RefreshValidation;
   RefreshRaw;
+  RefreshSessionSummary;
+  RefreshOverviewStats;
   Status.SimpleText := '已加载: ' + ConfigPathEdit.Text;
+end;
+
+function TMainForm.TotalModelCount: Integer;
+var
+  Providers, Models: TStringList;
+  I: Integer;
+begin
+  Result := 0;
+  Providers := FConfig.ProviderIds;
+  try
+    for I := 0 to Providers.Count - 1 do
+    begin
+      Models := FConfig.ModelIds(Providers[I]);
+      try
+        Inc(Result, Models.Count);
+      finally
+        Models.Free;
+      end;
+    end;
+  finally
+    Providers.Free;
+  end;
+end;
+
+procedure TMainForm.RefreshOverviewStats;
+var
+  L: TStringList;
+  ProviderCount, AgentCount, McpCount, PluginCount, OMOAgentCount, OMOCategoryCount: Integer;
+begin
+  L := FConfig.ProviderIds;
+  try
+    ProviderCount := L.Count;
+  finally
+    L.Free;
+  end;
+  L := FConfig.AgentIds;
+  try
+    AgentCount := L.Count;
+  finally
+    L.Free;
+  end;
+  L := FConfig.McpIds;
+  try
+    McpCount := L.Count;
+  finally
+    L.Free;
+  end;
+  L := FConfig.Plugins;
+  try
+    PluginCount := L.Count;
+  finally
+    L.Free;
+  end;
+  L := FOMO.AgentIds;
+  try
+    OMOAgentCount := L.Count;
+  finally
+    L.Free;
+  end;
+  L := FOMO.CategoryIds;
+  try
+    OMOCategoryCount := L.Count;
+  finally
+    L.Free;
+  end;
+  OverviewProviderLabel.Caption := 'Provider: ' + IntToStr(ProviderCount);
+  OverviewModelLabel.Caption := 'Model: ' + IntToStr(TotalModelCount);
+  OverviewAgentLabel.Caption := 'Agent: ' + IntToStr(AgentCount);
+  OverviewMcpLabel.Caption := 'MCP: ' + IntToStr(McpCount);
+  OverviewPluginLabel.Caption := 'Plugin: ' + IntToStr(PluginCount);
+  OverviewOMOLabel.Caption := 'OMO: ' + IntToStr(OMOAgentCount) + ' / ' + IntToStr(OMOCategoryCount);
+  OverviewTokenLabel.Caption := '总 Token: ' + IntToStr(FSessionSummary.Total.TotalTokens) +
+    '  输入: ' + IntToStr(FSessionSummary.Total.InputTokens) +
+    '  输出: ' + IntToStr(FSessionSummary.Total.OutputTokens);
+end;
+
+procedure TMainForm.RefreshSessionSummary;
+begin
+  if not Assigned(SessionPathEdit) then
+    Exit;
+  if SessionPathEdit.Text = '' then
+    SessionPathEdit.Text := DiscoverOpenCodeSessionsDir(ExtractFileDir(ConfigPathEdit.Text));
+  FSessionSummary := ScanOpenCodeSessions(SessionPathEdit.Text);
+  PopulateSessionLists;
+  if Assigned(SessionChart) then
+    SessionChart.Invalidate;
+end;
+
+procedure TMainForm.PopulateSessionLists;
+var
+  I: Integer;
+  ProjectName: string;
+begin
+  if not Assigned(SessionProjectList) then
+    Exit;
+  SessionProjectList.Clear;
+  SessionList.Clear;
+  SessionModelList.Clear;
+  for I := 0 to High(FSessionSummary.Sessions) do
+  begin
+    ProjectName := FSessionSummary.Sessions[I].ProjectName;
+    if SessionProjectList.Items.IndexOf(ProjectName) < 0 then
+      SessionProjectList.Items.Add(ProjectName);
+    SessionList.Items.Add(ProjectName + ' | ' + FSessionSummary.Sessions[I].SessionName + ' | ' + IntToStr(FSessionSummary.Sessions[I].Usage.TotalTokens));
+  end;
+  for I := 0 to High(FSessionSummary.Models) do
+    SessionModelList.Items.Add(FSessionSummary.Models[I].ModelName + '  总:' + IntToStr(FSessionSummary.Models[I].Usage.TotalTokens) +
+      ' 输入:' + IntToStr(FSessionSummary.Models[I].Usage.InputTokens) +
+      ' 输出:' + IntToStr(FSessionSummary.Models[I].Usage.OutputTokens));
+  SessionSummaryMemo.Clear;
+  SessionSummaryMemo.Lines.Add('项目数: ' + IntToStr(FSessionSummary.ProjectCount));
+  SessionSummaryMemo.Lines.Add('会话数: ' + IntToStr(FSessionSummary.SessionCount));
+  SessionSummaryMemo.Lines.Add('总 Token: ' + IntToStr(FSessionSummary.Total.TotalTokens));
+  SessionSummaryMemo.Lines.Add('输入 Token: ' + IntToStr(FSessionSummary.Total.InputTokens));
+  SessionSummaryMemo.Lines.Add('输出 Token: ' + IntToStr(FSessionSummary.Total.OutputTokens));
+  SessionSummaryMemo.Lines.Add('目录: ' + FSessionSummary.RootDir);
 end;
 
 procedure TMainForm.RefreshValidation;
@@ -1177,6 +1372,98 @@ procedure TMainForm.OnDeleteOMOCategory(Sender: TObject);
 begin
   FOMO.DeleteCategory(OMOCategoryIdEdit.Text);
   RefreshAll;
+end;
+
+procedure TMainForm.OnRefreshSessions(Sender: TObject);
+begin
+  FSessionSummary := ScanOpenCodeSessions(SessionPathEdit.Text);
+  PopulateSessionLists;
+  RefreshOverviewStats;
+  SessionChart.Invalidate;
+end;
+
+procedure TMainForm.OnSessionProjectSelect(Sender: TObject);
+var
+  I: Integer;
+  ProjectName: string;
+begin
+  ProjectName := SelectedText(SessionProjectList);
+  SessionList.Clear;
+  for I := 0 to High(FSessionSummary.Sessions) do
+    if (ProjectName = '') or (FSessionSummary.Sessions[I].ProjectName = ProjectName) then
+      SessionList.Items.Add(FSessionSummary.Sessions[I].ProjectName + ' | ' + FSessionSummary.Sessions[I].SessionName + ' | ' + IntToStr(FSessionSummary.Sessions[I].Usage.TotalTokens));
+end;
+
+procedure TMainForm.OnSessionSelect(Sender: TObject);
+var
+  I: Integer;
+  DisplayText: string;
+begin
+  DisplayText := SelectedText(SessionList);
+  for I := 0 to High(FSessionSummary.Sessions) do
+    if DisplayText = FSessionSummary.Sessions[I].ProjectName + ' | ' + FSessionSummary.Sessions[I].SessionName + ' | ' + IntToStr(FSessionSummary.Sessions[I].Usage.TotalTokens) then
+    begin
+      SessionSummaryMemo.Clear;
+      SessionSummaryMemo.Lines.Add('项目: ' + FSessionSummary.Sessions[I].ProjectName);
+      SessionSummaryMemo.Lines.Add('会话: ' + FSessionSummary.Sessions[I].SessionName);
+      SessionSummaryMemo.Lines.Add('总 Token: ' + IntToStr(FSessionSummary.Sessions[I].Usage.TotalTokens));
+      SessionSummaryMemo.Lines.Add('输入 Token: ' + IntToStr(FSessionSummary.Sessions[I].Usage.InputTokens));
+      SessionSummaryMemo.Lines.Add('输出 Token: ' + IntToStr(FSessionSummary.Sessions[I].Usage.OutputTokens));
+      SessionSummaryMemo.Lines.Add('文件: ' + FSessionSummary.Sessions[I].FileName);
+      Exit;
+    end;
+end;
+
+procedure TMainForm.OnTokenChartPaint(Sender: TObject);
+var
+  C: TCanvas;
+  I, LeftPos, TopPos, BarWidth, BarHeight, MaxHeight, LabelY: Integer;
+  MaxTokens: Int64;
+  Scale: Double;
+  ChartW, ChartH: Integer;
+begin
+  C := SessionChart.Canvas;
+  ChartW := SessionChart.Width;
+  ChartH := SessionChart.Height;
+  C.Brush.Color := clWhite;
+  C.FillRect(0, 0, ChartW, ChartH);
+  C.Pen.Color := clGray;
+  C.Rectangle(0, 0, ChartW, ChartH);
+  C.Font.Color := clBlack;
+  C.TextOut(12, 10, '按模型 Token 用量');
+  if Length(FSessionSummary.Models) = 0 then
+  begin
+    C.TextOut(12, 36, '未找到可统计的会话 usage 数据');
+    Exit;
+  end;
+  MaxTokens := 1;
+  for I := 0 to High(FSessionSummary.Models) do
+    if FSessionSummary.Models[I].Usage.TotalTokens > MaxTokens then
+      MaxTokens := FSessionSummary.Models[I].Usage.TotalTokens;
+  MaxHeight := ChartH - 86;
+  if MaxHeight < 40 then
+    MaxHeight := 40;
+  BarWidth := (ChartW - 40) div Length(FSessionSummary.Models);
+  if BarWidth > 90 then
+    BarWidth := 90;
+  if BarWidth < 24 then
+    BarWidth := 24;
+  Scale := MaxHeight / MaxTokens;
+  LabelY := ChartH - 44;
+  for I := 0 to High(FSessionSummary.Models) do
+  begin
+    LeftPos := 20 + I * BarWidth;
+    BarHeight := Round(FSessionSummary.Models[I].Usage.TotalTokens * Scale);
+    TopPos := LabelY - BarHeight;
+    C.Brush.Color := RGBToColor(54, 117, 202);
+    C.Pen.Color := RGBToColor(54, 117, 202);
+    C.Rectangle(LeftPos, TopPos, LeftPos + BarWidth - 8, LabelY);
+    C.Brush.Style := bsClear;
+    C.Font.Color := clBlack;
+    C.TextOut(LeftPos, TopPos - 18, IntToStr(FSessionSummary.Models[I].Usage.TotalTokens));
+    C.TextOut(LeftPos, LabelY + 4, Copy(FSessionSummary.Models[I].ModelName, 1, 12));
+    C.Brush.Style := bsSolid;
+  end;
 end;
 
 end.

@@ -1,0 +1,33 @@
+# Lazarus / Free Pascal build outputs
+lib/
+*.o
+*.ppu
+*.compiled
+*.or
+*.res
+*.rst
+*.bak
+backup/
+
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Lazarus local state
+*.lps
+*.dbg
+*.rsj
+
+# Test and temporary output
+tests/output/
+tmp/
+temp/
+coverage/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

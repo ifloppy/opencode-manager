@@ -59,6 +59,7 @@ type
     OMOCategoryDisabledCheck: TCheckBox;
 
     procedure BuildUi;
+    procedure AdjustResponsiveLayout;
     function AddTab(const ACaption: string): TTabSheet;
     function AddNavButton(const ACaption: string; PageIndex: Integer): TButton;
     procedure UpdateNavigation;
@@ -85,6 +86,7 @@ type
     function ObjectInSection(Root: TJSONObject; const Section, Id: string): TJSONObject;
 
     procedure OnOpenConfig(Sender: TObject);
+    procedure OnFormResize(Sender: TObject);
     procedure OnNavButtonClick(Sender: TObject);
     procedure OnSaveConfig(Sender: TObject);
     procedure OnReload(Sender: TObject);
@@ -102,9 +104,11 @@ type
     procedure OnSaveAgent(Sender: TObject);
     procedure OnDeleteAgent(Sender: TObject);
     procedure OnMcpSelect(Sender: TObject);
+    procedure OnNewMcp(Sender: TObject);
     procedure OnSaveMcp(Sender: TObject);
     procedure OnDeleteMcp(Sender: TObject);
     procedure OnPluginSelect(Sender: TObject);
+    procedure OnNewPlugin(Sender: TObject);
     procedure OnSavePlugin(Sender: TObject);
     procedure OnDeletePlugin(Sender: TObject);
     procedure OnCreateProfile(Sender: TObject);
@@ -131,14 +135,15 @@ begin
   Caption := 'OpenCode 配置管理器';
   Width := 1180;
   Height := 780;
-  Constraints.MinWidth := 980;
-  Constraints.MinHeight := 640;
+  Constraints.MinWidth := 820;
+  Constraints.MinHeight := 560;
   Position := poScreenCenter;
   FConfig := TOpenCodeConfig.Create;
   FOMO := TOMOConfig.Create;
   FProfiles := TProfileManager.Create;
   FModelListKeys := TStringList.Create;
   BuildUi;
+  OnResize := @OnFormResize;
   LoadDefaultConfigs;
 end;
 
@@ -191,6 +196,8 @@ begin
   Result := TButton.Create(AParent);
   Result.Parent := AParent;
   Result.Caption := ACaption;
+  Result.Hint := ACaption;
+  Result.ShowHint := True;
   Result.SetBounds(LeftPos, TopPos, WidthValue, 30);
   Result.OnClick := Handler;
 end;
@@ -200,6 +207,7 @@ begin
   Result := TLabel.Create(AParent);
   Result.Parent := AParent;
   Result.Caption := ACaption;
+  Result.Hint := ACaption;
   Result.SetBounds(LeftPos, TopPos, 120, 24);
 end;
 
@@ -207,6 +215,7 @@ function TMainForm.AddEdit(AParent: TWinControl; LeftPos, TopPos, WidthValue: In
 begin
   Result := TEdit.Create(AParent);
   Result.Parent := AParent;
+  Result.ShowHint := True;
   Result.SetBounds(LeftPos, TopPos, WidthValue, 28);
 end;
 
@@ -224,6 +233,7 @@ begin
   Result := TComboBox.Create(AParent);
   Result.Parent := AParent;
   Result.Style := csDropDown;
+  Result.ShowHint := True;
   Result.SetBounds(LeftPos, TopPos, WidthValue, 28);
   FillCombo(Result, Items);
 end;
@@ -263,11 +273,13 @@ begin
   ValidationMemo.Parent := Tab;
   ValidationMemo.SetBounds(16, 100, 1070, 560);
   ValidationMemo.Anchors := [akLeft, akTop, akRight, akBottom];
+  ValidationMemo.Hint := '配置路径、校验结果和结构问题';
+  ValidationMemo.ShowHint := True;
   ValidationMemo.ScrollBars := ssAutoBoth;
   ValidationMemo.ReadOnly := True;
 
   Tab := AddTab('Provider / Model');
-  ProviderList := TListBox.Create(Tab); ProviderList.Parent := Tab; ProviderList.SetBounds(16, 16, 210, 285); ProviderList.Anchors := [akLeft, akTop, akBottom]; ProviderList.OnClick := @OnProviderSelect;
+  ProviderList := TListBox.Create(Tab); ProviderList.Parent := Tab; ProviderList.SetBounds(16, 16, 210, 260); ProviderList.Anchors := [akLeft, akTop, akBottom]; ProviderList.Hint := 'Provider 列表'; ProviderList.ShowHint := True; ProviderList.OnClick := @OnProviderSelect;
   AddLabel(Tab, 'Provider ID', 250, 20); ProviderIdEdit := AddCombo(Tab, 370, 16, 520, []); ProviderIdEdit.Anchors := [akLeft, akTop, akRight]; ProviderIdEdit.OnChange := @OnProviderPresetChange;
   for I := Low(PROVIDER_PRESETS) to High(PROVIDER_PRESETS) do
     ProviderIdEdit.Items.Add(PROVIDER_PRESETS[I].Id);
@@ -277,12 +289,12 @@ begin
   AddLabel(Tab, 'API Key', 250, 172); ProviderApiKeyEdit := AddEdit(Tab, 370, 168, 520); ProviderApiKeyEdit.Anchors := [akLeft, akTop, akRight];
   AddButton(Tab, '保存 Provider', 370, 210, 130, @OnSaveProvider);
   AddButton(Tab, '删除 Provider', 510, 210, 130, @OnDeleteProvider);
-  ModelList := TListBox.Create(Tab); ModelList.Parent := Tab; ModelList.SetBounds(16, 320, 210, 300); ModelList.Anchors := [akLeft, akBottom]; ModelList.OnClick := @OnModelSelect;
-  AddLabel(Tab, 'Model ID', 250, 320); ModelIdEdit := AddEdit(Tab, 370, 316, 520); ModelIdEdit.Anchors := [akLeft, akBottom, akRight];
-  AddLabel(Tab, '模型显示名', 250, 358); ModelNameEdit := AddEdit(Tab, 370, 354, 520); ModelNameEdit.Anchors := [akLeft, akBottom, akRight];
-  AddButton(Tab, '保存 Model', 370, 396, 130, @OnSaveModel);
-  AddButton(Tab, '删除 Model', 510, 396, 130, @OnDeleteModel);
-  AddButton(Tab, '测试连通性', 650, 396, 130, @OnTestModelConnectivity);
+  ModelList := TListBox.Create(Tab); ModelList.Parent := Tab; ModelList.SetBounds(16, 292, 210, 328); ModelList.Anchors := [akLeft, akTop, akBottom]; ModelList.Hint := '模型列表：选择后状态栏显示完整名称和 key'; ModelList.ShowHint := True; ModelList.OnClick := @OnModelSelect;
+  AddLabel(Tab, 'Model ID', 250, 292); ModelIdEdit := AddEdit(Tab, 370, 288, 520); ModelIdEdit.Anchors := [akLeft, akTop, akRight];
+  AddLabel(Tab, '模型显示名', 250, 330); ModelNameEdit := AddEdit(Tab, 370, 326, 520); ModelNameEdit.Anchors := [akLeft, akTop, akRight];
+  AddButton(Tab, '保存 Model', 370, 368, 130, @OnSaveModel);
+  AddButton(Tab, '删除 Model', 510, 368, 130, @OnDeleteModel);
+  AddButton(Tab, '测试连通性', 650, 368, 130, @OnTestModelConnectivity);
 
   Tab := AddTab('OpenCode Agent');
   AgentList := TListBox.Create(Tab); AgentList.Parent := Tab; AgentList.SetBounds(16, 16, 220, 610); AgentList.Anchors := [akLeft, akTop, akBottom]; AgentList.OnClick := @OnAgentSelect;
@@ -308,7 +320,7 @@ begin
   AgentDeleteButton := AddButton(Tab, '删除 Agent', 520, 530, 130, @OnDeleteAgent);
 
   Tab := AddTab('OMO Agents / Categories');
-  OMOAgentList := TListBox.Create(Tab); OMOAgentList.Parent := Tab; OMOAgentList.SetBounds(16, 16, 210, 280); OMOAgentList.OnClick := @OnOMOAgentSelect;
+  OMOAgentList := TListBox.Create(Tab); OMOAgentList.Parent := Tab; OMOAgentList.SetBounds(16, 16, 210, 280); OMOAgentList.Anchors := [akLeft, akTop, akBottom]; OMOAgentList.Hint := 'OMO Agent 列表，内置项可编辑或禁用但不能删除'; OMOAgentList.ShowHint := True; OMOAgentList.OnClick := @OnOMOAgentSelect;
   AddLabel(Tab, 'Agent ID', 245, 20); OMOAgentIdEdit := AddEdit(Tab, 365, 16, 300);
   AddLabel(Tab, '模型', 245, 58); OMOAgentModelEdit := AddEdit(Tab, 365, 54, 300);
   AddLabel(Tab, 'Category', 245, 96); OMOAgentCategoryEdit := AddCombo(Tab, 365, 92, 300, OMO_CATEGORY_PRESETS);
@@ -317,10 +329,10 @@ begin
   OMOAgentDisabledCheck := TCheckBox.Create(Tab); OMOAgentDisabledCheck.Parent := Tab; OMOAgentDisabledCheck.Caption := '禁用'; OMOAgentDisabledCheck.SetBounds(490, 170, 80, 24);
   AddLabel(Tab, 'Thinking', 245, 210); OMOAgentThinkingEdit := AddCombo(Tab, 365, 206, 120, OMO_THINKING_OPTIONS);
   AddLabel(Tab, 'Reasoning', 500, 210); OMOAgentReasoningEdit := AddCombo(Tab, 590, 206, 120, OMO_REASONING_EFFORTS);
-  OMOAgentPromptMemo := TMemo.Create(Tab); OMOAgentPromptMemo.Parent := Tab; OMOAgentPromptMemo.SetBounds(680, 16, 390, 180); OMOAgentPromptMemo.ScrollBars := ssAutoBoth; OMOAgentPromptMemo.Anchors := [akLeft, akTop, akRight];
+  OMOAgentPromptMemo := TMemo.Create(Tab); OMOAgentPromptMemo.Parent := Tab; OMOAgentPromptMemo.SetBounds(740, 16, 390, 250); OMOAgentPromptMemo.ScrollBars := ssAutoBoth; OMOAgentPromptMemo.Anchors := [akLeft, akTop, akRight, akBottom]; OMOAgentPromptMemo.Hint := 'OMO Agent prompt_append'; OMOAgentPromptMemo.ShowHint := True;
   AddButton(Tab, '保存 OMO Agent', 365, 245, 150, @OnSaveOMOAgent);
   OMOAgentDeleteButton := AddButton(Tab, '删除 OMO Agent', 525, 245, 150, @OnDeleteOMOAgent);
-  OMOCategoryList := TListBox.Create(Tab); OMOCategoryList.Parent := Tab; OMOCategoryList.SetBounds(16, 330, 210, 280); OMOCategoryList.OnClick := @OnOMOCategorySelect;
+  OMOCategoryList := TListBox.Create(Tab); OMOCategoryList.Parent := Tab; OMOCategoryList.SetBounds(16, 330, 210, 280); OMOCategoryList.Anchors := [akLeft, akTop, akBottom]; OMOCategoryList.Hint := 'OMO Category 列表'; OMOCategoryList.ShowHint := True; OMOCategoryList.OnClick := @OnOMOCategorySelect;
   AddLabel(Tab, 'Category ID', 245, 334); OMOCategoryIdEdit := AddEdit(Tab, 365, 330, 300);
   AddLabel(Tab, '模型', 245, 372); OMOCategoryModelEdit := AddEdit(Tab, 365, 368, 300);
   AddLabel(Tab, '描述', 245, 410); OMOCategoryDescEdit := AddEdit(Tab, 365, 406, 300);
@@ -328,22 +340,24 @@ begin
   OMOCategoryDisabledCheck := TCheckBox.Create(Tab); OMOCategoryDisabledCheck.Parent := Tab; OMOCategoryDisabledCheck.Caption := '禁用'; OMOCategoryDisabledCheck.SetBounds(365, 482, 80, 24);
   AddLabel(Tab, 'Thinking', 245, 524); OMOCategoryThinkingEdit := AddCombo(Tab, 365, 520, 120, OMO_THINKING_OPTIONS);
   AddLabel(Tab, 'Reasoning', 500, 524); OMOCategoryReasoningEdit := AddCombo(Tab, 590, 520, 120, OMO_REASONING_EFFORTS);
-  OMOCategoryPromptMemo := TMemo.Create(Tab); OMOCategoryPromptMemo.Parent := Tab; OMOCategoryPromptMemo.SetBounds(680, 330, 390, 180); OMOCategoryPromptMemo.ScrollBars := ssAutoBoth; OMOCategoryPromptMemo.Anchors := [akLeft, akTop, akRight];
+  OMOCategoryPromptMemo := TMemo.Create(Tab); OMOCategoryPromptMemo.Parent := Tab; OMOCategoryPromptMemo.SetBounds(740, 330, 390, 250); OMOCategoryPromptMemo.ScrollBars := ssAutoBoth; OMOCategoryPromptMemo.Anchors := [akLeft, akBottom, akRight]; OMOCategoryPromptMemo.Hint := 'OMO Category prompt_append'; OMOCategoryPromptMemo.ShowHint := True;
   AddButton(Tab, '保存 Category', 365, 560, 150, @OnSaveOMOCategory);
   AddButton(Tab, '删除 Category', 525, 560, 150, @OnDeleteOMOCategory);
 
   Tab := AddTab('MCP / Plugin');
-  McpList := TListBox.Create(Tab); McpList.Parent := Tab; McpList.SetBounds(16, 16, 220, 300); McpList.OnClick := @OnMcpSelect;
+  McpList := TListBox.Create(Tab); McpList.Parent := Tab; McpList.SetBounds(16, 16, 220, 300); McpList.Anchors := [akLeft, akTop, akBottom]; McpList.Hint := 'MCP 列表'; McpList.ShowHint := True; McpList.OnClick := @OnMcpSelect;
   AddLabel(Tab, 'MCP ID', 260, 20); McpIdEdit := AddEdit(Tab, 380, 16, 260);
   AddLabel(Tab, '类型', 260, 58); McpTypeEdit := AddCombo(Tab, 380, 54, 160, MCP_TYPES); McpTypeEdit.Text := 'local';
   AddLabel(Tab, '命令或 URL', 260, 96); McpTargetEdit := AddEdit(Tab, 380, 92, 520);
   McpEnabledCheck := TCheckBox.Create(Tab); McpEnabledCheck.Parent := Tab; McpEnabledCheck.Caption := '启用'; McpEnabledCheck.Checked := True; McpEnabledCheck.SetBounds(380, 130, 80, 24);
-  AddButton(Tab, '保存 MCP', 380, 170, 130, @OnSaveMcp);
-  AddButton(Tab, '删除 MCP', 520, 170, 130, @OnDeleteMcp);
-  PluginList := TListBox.Create(Tab); PluginList.Parent := Tab; PluginList.SetBounds(16, 350, 220, 260); PluginList.OnClick := @OnPluginSelect;
+  AddButton(Tab, '新增 MCP', 380, 170, 130, @OnNewMcp);
+  AddButton(Tab, '保存 MCP', 520, 170, 130, @OnSaveMcp);
+  AddButton(Tab, '删除 MCP', 660, 170, 130, @OnDeleteMcp);
+  PluginList := TListBox.Create(Tab); PluginList.Parent := Tab; PluginList.SetBounds(16, 350, 220, 260); PluginList.Anchors := [akLeft, akTop, akBottom]; PluginList.Hint := 'Plugin 包列表'; PluginList.ShowHint := True; PluginList.OnClick := @OnPluginSelect;
   AddLabel(Tab, 'Plugin 包名', 260, 354); PluginNameEdit := AddEdit(Tab, 380, 350, 360);
-  AddButton(Tab, '保存 Plugin', 380, 390, 130, @OnSavePlugin);
-  AddButton(Tab, '删除 Plugin', 520, 390, 130, @OnDeletePlugin);
+  AddButton(Tab, '新增 Plugin', 380, 390, 130, @OnNewPlugin);
+  AddButton(Tab, '保存 Plugin', 520, 390, 130, @OnSavePlugin);
+  AddButton(Tab, '删除 Plugin', 660, 390, 130, @OnDeletePlugin);
 
   Tab := AddTab('Profile');
   ProfileList := TListBox.Create(Tab); ProfileList.Parent := Tab; ProfileList.SetBounds(16, 16, 260, 590); ProfileList.Anchors := [akLeft, akTop, akBottom];
@@ -358,6 +372,64 @@ begin
   AddButton(Tab, '从原始 JSON 应用', 16, 620, 160, @OnApplyRaw);
   PageControl.ActivePageIndex := 0;
   UpdateNavigation;
+  AdjustResponsiveLayout;
+end;
+
+procedure TMainForm.AdjustResponsiveLayout;
+var
+  W, H, ListGap, ListHeight, RawWidth, RightX, RightW, PromptH: Integer;
+begin
+  if Assigned(ProviderList) then
+  begin
+    H := ProviderList.Parent.ClientHeight;
+    if H > 460 then
+    begin
+      ListGap := 16;
+      ListHeight := (H - 48) div 2;
+      ProviderList.SetBounds(16, 16, 210, ListHeight);
+      ModelList.SetBounds(16, 16 + ListHeight + ListGap, 210, H - (32 + ListHeight + ListGap));
+    end;
+  end;
+
+  if Assigned(RawMemo) then
+  begin
+    W := RawMemo.Parent.ClientWidth;
+    H := RawMemo.Parent.ClientHeight;
+    RawWidth := (W - 64) div 2;
+    if RawWidth < 240 then
+      RawWidth := 240;
+    RawMemo.SetBounds(16, 16, RawWidth, H - 80);
+    OMORawMemo.SetBounds(32 + RawWidth, 16, W - RawWidth - 48, H - 80);
+  end;
+
+  if Assigned(OMOAgentPromptMemo) then
+  begin
+    W := OMOAgentPromptMemo.Parent.ClientWidth;
+    H := OMOAgentPromptMemo.Parent.ClientHeight;
+    RightX := 740;
+    if W - RightX < 280 then
+      RightX := W - 300;
+    if RightX < 680 then
+      RightX := 680;
+    RightW := W - RightX - 16;
+    if RightW < 260 then
+      RightW := 260;
+    PromptH := (H - 62) div 2;
+    if PromptH < 150 then
+      PromptH := 150;
+    OMOAgentPromptMemo.SetBounds(RightX, 16, RightW, PromptH);
+    OMOCategoryPromptMemo.SetBounds(RightX, 32 + PromptH, RightW, H - PromptH - 48);
+  end;
+
+  if Assigned(McpList) then
+  begin
+    H := McpList.Parent.ClientHeight;
+    if H > 500 then
+    begin
+      McpList.SetBounds(16, 16, 220, (H - 64) div 2);
+      PluginList.SetBounds(16, 48 + McpList.Height, 220, H - McpList.Height - 64);
+    end;
+  end;
 end;
 
 procedure TMainForm.LoadDefaultConfigs;
@@ -584,7 +656,13 @@ begin
   begin
     PageControl.ActivePageIndex := TButton(Sender).Tag;
     UpdateNavigation;
+    AdjustResponsiveLayout;
   end;
+end;
+
+procedure TMainForm.OnFormResize(Sender: TObject);
+begin
+  AdjustResponsiveLayout;
 end;
 
 procedure TMainForm.OnSaveConfig(Sender: TObject);
@@ -655,6 +733,7 @@ begin
         ModelList.Items.Add(ModelId);
       FModelListKeys.Add(ModelId);
     end;
+    ModelList.Hint := '模型列表：选择后状态栏显示完整名称和 key。当前 ' + IntToStr(ModelList.Items.Count) + ' 项。';
   finally
     L.Free;
   end;
@@ -678,6 +757,7 @@ var
 begin
   ModelIdEdit.Text := SelectedModelId;
   ModelNameEdit.Text := '';
+  ModelIdEdit.Hint := ModelIdEdit.Text;
   Provider := ObjectInSection(FConfig.Data, 'provider', ProviderIdEdit.Text);
   if Assigned(Provider) and (Provider.Find('models') is TJSONObject) then
   begin
@@ -686,8 +766,13 @@ begin
     begin
       ModelObj := TJSONObject(Models.Find(ModelIdEdit.Text));
       ModelNameEdit.Text := ModelObj.Get('name', '');
+      ModelNameEdit.Hint := ModelNameEdit.Text;
     end;
   end;
+  if ModelNameEdit.Text <> '' then
+    Status.SimpleText := '模型: ' + ModelNameEdit.Text + ' / ' + ModelIdEdit.Text
+  else
+    Status.SimpleText := '模型: ' + ModelIdEdit.Text;
 end;
 
 procedure TMainForm.OnSaveProvider(Sender: TObject);
@@ -793,7 +878,7 @@ begin
   begin
     McpTypeEdit.Text := Mcp.Get('type', 'local');
     McpEnabledCheck.Checked := Mcp.Get('enabled', True);
-    if McpTypeEdit.Text = 'remote' then
+    if (LowerCase(McpTypeEdit.Text) = 'remote') or (LowerCase(McpTypeEdit.Text) = 'sse') then
       McpTargetEdit.Text := Mcp.Get('url', '')
     else if Mcp.Find('command') is TJSONArray then
     begin
@@ -808,10 +893,20 @@ begin
   end;
 end;
 
+procedure TMainForm.OnNewMcp(Sender: TObject);
+begin
+  McpList.ItemIndex := -1;
+  McpIdEdit.Text := '';
+  McpTypeEdit.Text := 'local';
+  McpTargetEdit.Text := '';
+  McpEnabledCheck.Checked := True;
+  Status.SimpleText := '请输入新的 MCP ID、类型和命令或 URL，然后点击保存 MCP。';
+end;
+
 procedure TMainForm.OnSaveMcp(Sender: TObject);
 begin
-  if LowerCase(McpTypeEdit.Text) = 'remote' then
-    FConfig.UpsertMcpRemote(McpIdEdit.Text, McpTargetEdit.Text, McpEnabledCheck.Checked)
+  if (LowerCase(McpTypeEdit.Text) = 'remote') or (LowerCase(McpTypeEdit.Text) = 'sse') then
+    FConfig.UpsertMcpRemote(McpIdEdit.Text, McpTargetEdit.Text, McpEnabledCheck.Checked, LowerCase(McpTypeEdit.Text))
   else
     FConfig.UpsertMcpLocal(McpIdEdit.Text, McpTargetEdit.Text, McpEnabledCheck.Checked);
   RefreshAll;
@@ -826,6 +921,15 @@ end;
 procedure TMainForm.OnPluginSelect(Sender: TObject);
 begin
   PluginNameEdit.Text := SelectedText(PluginList);
+  PluginNameEdit.Hint := PluginNameEdit.Text;
+end;
+
+procedure TMainForm.OnNewPlugin(Sender: TObject);
+begin
+  PluginList.ItemIndex := -1;
+  PluginNameEdit.Text := '';
+  PluginNameEdit.Hint := '输入新的 Plugin 包名，例如 npm 包名或本地插件路径';
+  Status.SimpleText := '请输入新的 Plugin 包名，然后点击保存 Plugin。';
 end;
 
 procedure TMainForm.OnSavePlugin(Sender: TObject);

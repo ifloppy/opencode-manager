@@ -46,7 +46,7 @@ type
     procedure UpsertAgent(const Id, Description, Mode, Model, Prompt: string; Temperature: Double; Disabled: Boolean; const Color: string = ''; MaxSteps: Integer = 0; Hidden: Boolean = False; const Tools: string = '');
     procedure DeleteAgent(const Id: string);
     procedure UpsertMcpLocal(const Id, CommandText: string; Enabled: Boolean);
-    procedure UpsertMcpRemote(const Id, Url: string; Enabled: Boolean);
+    procedure UpsertMcpRemote(const Id, Url: string; Enabled: Boolean; const McpType: string = 'remote');
     procedure DeleteMcp(const Id: string);
     procedure UpsertPlugin(const PluginName: string);
     procedure DeletePlugin(const PluginName: string);
@@ -451,7 +451,7 @@ begin
   if Env.Count = 0 then ;
 end;
 
-procedure TOpenCodeConfig.UpsertMcpRemote(const Id, Url: string; Enabled: Boolean);
+procedure TOpenCodeConfig.UpsertMcpRemote(const Id, Url: string; Enabled: Boolean; const McpType: string = 'remote');
 var
   Mcps, Mcp: TJSONObject;
 begin
@@ -463,7 +463,7 @@ begin
     Mcp := TJSONObject.Create;
     Mcps.Add(Id, Mcp);
   end;
-  Mcp.Strings['type'] := 'remote';
+  Mcp.Strings['type'] := McpType;
   Mcp.Strings['url'] := Url;
   Mcp.Booleans['enabled'] := Enabled;
 end;

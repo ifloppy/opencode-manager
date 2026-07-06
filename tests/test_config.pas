@@ -12,6 +12,7 @@ type
   published
     procedure EmptyConfigListsAreSafe;
     procedure UpsertsProviderModelAgentMcpAndPlugin;
+    procedure UpsertsSseMcp;
     procedure ValidatesInvalidAgentMode;
     procedure UpsertsOpenAgentAgentAndCategory;
   end;
@@ -65,6 +66,20 @@ begin
     AssertTrue(Pos('maxSteps', Cfg.AsJson) > 0);
     AssertTrue(Pos('read', Cfg.AsJson) > 0);
     AssertTrue(Pos('oh-my-openagent@latest', Cfg.AsJson) > 0);
+  finally
+    Cfg.Free;
+  end;
+end;
+
+procedure TConfigTests.UpsertsSseMcp;
+var
+  Cfg: TOpenCodeConfig;
+begin
+  Cfg := TOpenCodeConfig.Create;
+  try
+    Cfg.UpsertMcpRemote('events', 'https://mcp.example.com/sse', True, 'sse');
+    AssertTrue(Pos('"type" : "sse"', Cfg.AsJson) > 0);
+    AssertTrue(Pos('https://mcp.example.com/sse', Cfg.AsJson) > 0);
   finally
     Cfg.Free;
   end;

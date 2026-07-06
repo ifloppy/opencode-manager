@@ -42,13 +42,16 @@ jobs:
         if: matrix.os == 'windows'
         shell: pwsh
         run: |
-          choco install lazarus -y --no-progress
+          choco install lazarus sqlite openssl.light -y --no-progress
           "C:\lazarus" | Out-File -FilePath $env:GITHUB_PATH -Append
           $fpcBin = Get-ChildItem -LiteralPath "C:\lazarus\fpc" -Directory -Recurse |
             Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "fpc.exe") } |
             Select-Object -First 1
           if (-not $fpcBin) { throw "Unable to find fpc.exe under C:\lazarus\fpc" }
           $fpcBin.FullName | Out-File -FilePath $env:GITHUB_PATH -Append
+          $dllDirs = Get-ChildItem -LiteralPath $env:ChocolateyInstall -Recurse -File -Include sqlite3.dll,libssl*.dll,libcrypto*.dll -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty DirectoryName -Unique
+          foreach ($dllDir in $dllDirs) { $dllDir | Out-File -FilePath $env:GITHUB_PATH -Append }
 
       - name: Install Lazarus on Linux
         if: matrix.os == 'linux'

@@ -21,16 +21,21 @@ Copy-Item -LiteralPath $binary.FullName -Destination $distRoot
 
 if ($IsWindows) {
   $sqliteSearchRoots = @(
-    'C:\lazarus',
-    'C:\tools',
-    $env:ChocolateyInstall
+    'C:\ProgramData\chocolatey\lib\sqlite\tools',
+    'C:\tools\sqlite',
+    'C:\tools\sqlite3',
+    $env:ChocolateyInstall,
+    'C:\Program Files\OpenSSL',
+    'C:\Program Files\OpenSSL-Win64',
+    'C:\Program Files\OpenSSL-Win32'
   ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
-  $sqliteDll = $sqliteSearchRoots |
-    ForEach-Object { Get-ChildItem -LiteralPath $_ -Recurse -Filter 'sqlite3.dll' -ErrorAction SilentlyContinue } |
-    Where-Object { $_.FullName -match 'lazarus|fpc|sqlite' } |
-    Select-Object -First 1
-  if ($sqliteDll) {
-    Copy-Item -LiteralPath $sqliteDll.FullName -Destination $distRoot
+  $runtimeDlls = $sqliteSearchRoots |
+    ForEach-Object { Get-ChildItem -LiteralPath $_ -Recurse -File -Include sqlite3.dll,libssl*.dll,libcrypto*.dll -ErrorAction SilentlyContinue } |
+    Sort-Object Name, @{ Expression = { if ($_.FullName -match 'x64|win64|OpenSSL-Win64') { 0 } else { 1 } } }, FullName |
+    Group-Object Name |
+    ForEach-Object { $_.Group | Select-Object -First 1 }
+  foreach ($dll in $runtimeDlls) {
+    Copy-Item -LiteralPath $dll.FullName -Destination $distRoot -Force
   }
 } else {
   chmod +x (Join-Path $distRoot $binary.Name)

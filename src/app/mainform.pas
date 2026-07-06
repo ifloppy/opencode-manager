@@ -537,7 +537,7 @@ begin
   ModelNameLabel.Caption := UiText('Model display name', '模型显示名');
   ModelSaveButton.Caption := UiText('Save Model', '保存 Model');
   ModelDeleteButton.Caption := UiText('Delete Model', '删除 Model');
-  ModelTestButton.Caption := UiText('Test connectivity', '测试连通性');
+  ModelTestButton.Caption := UiText('Test', '测试连通性');
 
   AgentDescriptionLabel.Caption := UiText('Description', '描述');
   AgentModeLabel.Caption := UiText('Mode', '模式');
@@ -571,24 +571,24 @@ begin
 
   McpList.Hint := UiText('MCP list', 'MCP 列表');
   McpTypeLabel.Caption := UiText('Type', '类型');
-  McpTargetLabel.Caption := UiText('Command or URL', '命令或 URL');
+  McpTargetLabel.Caption := UiText('Command/URL', '命令或 URL');
   McpEnabledCheck.Caption := UiText('Enabled', '启用');
   McpNewButton.Caption := UiText('New MCP', '新增 MCP');
   McpSaveButton.Caption := UiText('Save MCP', '保存 MCP');
   McpDeleteButton.Caption := UiText('Delete MCP', '删除 MCP');
   PluginList.Hint := UiText('Plugin package list', 'Plugin 包列表');
-  PluginNameLabel.Caption := UiText('Plugin package', 'Plugin 包名');
+  PluginNameLabel.Caption := UiText('Plugin', 'Plugin 包名');
   PluginNewButton.Caption := UiText('New Plugin', '新增 Plugin');
   PluginSaveButton.Caption := UiText('Save Plugin', '保存 Plugin');
   PluginDeleteButton.Caption := UiText('Delete Plugin', '删除 Plugin');
 
   ProfileNameLabel.Caption := UiText('Profile name', 'Profile 名称');
-  ProfileCreateButton.Caption := UiText('Create from current config', '从当前配置创建');
+  ProfileCreateButton.Caption := UiText('Create Profile', '从当前配置创建');
   ProfileDeleteButton.Caption := UiText('Delete Profile', '删除 Profile');
   ProfileRootLabel.Caption := UiText('Profile root: ', 'Profile 根目录: ') + FProfiles.RootDir;
 
   SessionPathLabel.Caption := UiText('Database file', '数据库文件');
-  SessionRefreshButton.Caption := UiText('Refresh stats', '刷新统计');
+  SessionRefreshButton.Caption := UiText('Refresh', '刷新统计');
   SessionModelDisplayLabel.Caption := UiText('Model display', '模型显示');
   SessionModelDisplayEdit.Items[0] := UiText('Model ID', '模型 ID');
   SessionModelDisplayEdit.Items[1] := UiText('Display name', '显示名');
@@ -651,12 +651,12 @@ begin
     OverviewOMOLabel.SetBounds(10, 10, StatW - 20, 24);
     OverviewSessionLabel.SetBounds(10, 10, StatW - 20, 24);
     OverviewTokenLabel.SetBounds(10, 10, StatW - 20, 24);
-    ConfigPathLabel.SetBounds(16, 132, 110, 24);
-    ConfigPathEdit.SetBounds(130, 128, W - 426, 28);
+    ConfigPathLabel.SetBounds(16, 132, 220, 24);
+    ConfigPathEdit.SetBounds(252, 128, W - 552, 28);
     ConfigOpenButton.SetBounds(W - 280, 127, 124, BUTTON_H);
     ConfigSaveButton.SetBounds(W - 144, 127, 124, BUTTON_H);
-    OMOPathLabel.SetBounds(16, 170, 110, 24);
-    OMOPathEdit.SetBounds(130, 166, W - 426, 28);
+    OMOPathLabel.SetBounds(16, 170, 220, 24);
+    OMOPathEdit.SetBounds(252, 166, W - 552, 28);
     ReloadButton.SetBounds(W - 280, 165, 124, BUTTON_H);
     ValidateButton.SetBounds(W - 144, 165, 124, BUTTON_H);
     ValidationMemo.SetBounds(16, 206, W - 32, H - 222);
@@ -824,7 +824,7 @@ begin
   begin
     W := McpList.Parent.ClientWidth;
     H := McpList.Parent.ClientHeight;
-    FieldX := 380;
+    FieldX := 430;
     FieldW := W - FieldX - 16;
     if FieldW < 360 then
       FieldW := 360;
@@ -834,21 +834,21 @@ begin
     McpList.SetBounds(16, 16, 220, SectionH);
     PluginTop := 48 + SectionH;
     PluginList.SetBounds(16, PluginTop, 220, H - SectionH - 64);
-    McpIdLabel.SetBounds(260, 20, 120, 24);
+    McpIdLabel.SetBounds(260, 20, 160, 24);
     McpIdEdit.SetBounds(FieldX, 16, FieldW, 28);
-    McpTypeLabel.SetBounds(260, 58, 120, 24);
+    McpTypeLabel.SetBounds(260, 58, 160, 24);
     McpTypeEdit.SetBounds(FieldX, 54, 160, 28);
-    McpTargetLabel.SetBounds(260, 96, 120, 24);
+    McpTargetLabel.SetBounds(260, 96, 160, 24);
     McpTargetEdit.SetBounds(FieldX, 92, FieldW, 28);
     McpEnabledCheck.SetBounds(FieldX, 130, 80, 24);
-    McpNewButton.SetBounds(FieldX, 170, 130, BUTTON_H);
-    McpSaveButton.SetBounds(FieldX + 150, 170, 130, BUTTON_H);
-    McpDeleteButton.SetBounds(FieldX + 300, 170, 130, BUTTON_H);
-    PluginNameLabel.SetBounds(260, PluginTop + 4, 120, 24);
+    McpNewButton.SetBounds(FieldX, 170, 140, BUTTON_H);
+    McpSaveButton.SetBounds(FieldX + 160, 170, 140, BUTTON_H);
+    McpDeleteButton.SetBounds(FieldX + 320, 170, 140, BUTTON_H);
+    PluginNameLabel.SetBounds(260, PluginTop + 4, 160, 24);
     PluginNameEdit.SetBounds(FieldX, PluginTop, FieldW, 28);
-    PluginNewButton.SetBounds(FieldX, PluginTop + 40, 130, BUTTON_H);
-    PluginSaveButton.SetBounds(FieldX + 150, PluginTop + 40, 130, BUTTON_H);
-    PluginDeleteButton.SetBounds(FieldX + 300, PluginTop + 40, 130, BUTTON_H);
+    PluginNewButton.SetBounds(FieldX, PluginTop + 40, 140, BUTTON_H);
+    PluginSaveButton.SetBounds(FieldX + 160, PluginTop + 40, 140, BUTTON_H);
+    PluginDeleteButton.SetBounds(FieldX + 320, PluginTop + 40, 140, BUTTON_H);
   end;
 
   if Assigned(SessionProjectList) then
@@ -963,6 +963,41 @@ begin
     Result := Copy(Result, SlashPos + 1, MaxInt);
   if Length(Result) > 18 then
     Result := Copy(Result, 1, 17) + '..';
+end;
+
+function UiMessage(const Text: string): string;
+var
+  AgentPos, ModePos: Integer;
+  AgentId: string;
+begin
+  Result := Text;
+  if CurrentUiLanguage = ulChinese then
+    Exit;
+  if Text = '配置结构检查通过' then
+    Exit('Config structure passed');
+  if Text = 'Oh My OpenAgent 配置结构检查通过' then
+    Exit('Oh My OpenAgent config structure passed');
+  if Text = '字段 provider/agent/mcp 必须是对象' then
+    Exit('provider/agent/mcp fields must be objects');
+  if Text = '字段 plugin 必须是数组' then
+    Exit('plugin field must be an array');
+  if Text = '默认模型建议使用 provider/model 格式' then
+    Exit('Default model should use provider/model format');
+  if Text = 'OMO 字段 agents 必须是对象' then
+    Exit('OMO agents field must be an object');
+  if Text = 'OMO 字段 categories 必须是对象' then
+    Exit('OMO categories field must be an object');
+  if Text = 'Base URL 为空' then
+    Exit('Base URL is empty');
+  if Text = 'API Key 为空' then
+    Exit('API Key is empty');
+  AgentPos := Pos('Agent ', Text);
+  ModePos := Pos(' 的 mode 必须是 primary/subagent/all', Text);
+  if (AgentPos = 1) and (ModePos > 7) then
+  begin
+    AgentId := Copy(Text, 7, ModePos - 7);
+    Exit('Agent ' + AgentId + ' mode must be primary/subagent/all');
+  end;
 end;
 
 procedure TMainForm.RefreshOverviewStats;
@@ -1095,12 +1130,12 @@ begin
   ValidationMemo.Lines.Add(UiText('OpenCode config: ', 'OpenCode 配置: ') + ConfigPathEdit.Text);
   Issues := FConfig.Validate;
   for Issue in Issues do
-    ValidationMemo.Lines.Add('[' + Issue.Severity + '] ' + Issue.Message);
+    ValidationMemo.Lines.Add('[' + Issue.Severity + '] ' + UiMessage(Issue.Message));
   ValidationMemo.Lines.Add('');
   ValidationMemo.Lines.Add(UiText('Oh My OpenAgent config: ', 'Oh My OpenAgent 配置: ') + OMOPathEdit.Text);
   Issues := FOMO.Validate;
   for Issue in Issues do
-    ValidationMemo.Lines.Add('[' + Issue.Severity + '] ' + Issue.Message);
+    ValidationMemo.Lines.Add('[' + Issue.Severity + '] ' + UiMessage(Issue.Message));
 end;
 
 procedure TMainForm.RefreshRaw;
@@ -1510,7 +1545,7 @@ begin
   end
   else
   begin
-    Status.SimpleText := UiText('Model connectivity test failed: ', '模型连通性测试失败: ') + R.ErrorMessage;
+    Status.SimpleText := UiText('Model connectivity test failed: ', '模型连通性测试失败: ') + UiMessage(R.ErrorMessage);
     ShowMessage(Status.SimpleText);
   end;
 end;

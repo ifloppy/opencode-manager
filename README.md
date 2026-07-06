@@ -1,94 +1,123 @@
 # OpenCode Manager
 
-使用 FreePascal 和 Lazarus LCL 编写的 OpenCode 配置编辑器。当前版本是可运行的桌面 MVP，重点覆盖 OpenCode 与 Oh My OpenAgent/Oh My OpenCode 配置文件的安全读写、结构化编辑、校验、备份和测试。
+OpenCode Manager is a FreePascal/Lazarus LCL desktop editor for OpenCode configuration. It focuses on safe editing for OpenCode and Oh My OpenAgent/Oh My OpenCode config files, with structured editors, validation, backups, usage statistics, and tests.
 
-## 功能
+Chinese documentation: [docs/README.zh-CN.md](docs/README.zh-CN.md)
 
-- OpenCode `opencode.json/jsonc` 自动发现、读取、校验和保存。
-- Oh My OpenAgent `oh-my-openagent.json/jsonc` 管理，兼容旧名 `oh-my-opencode.json/jsonc`。
-- Provider 和 Model 管理，内置常见 Provider/NPM SDK 下拉预设，并支持模型连通性测试。
-- OpenCode Agent 管理：支持内置 `plan`/`build`、`description`、`mode`、`model`、`prompt`、`temperature`、`disable`、`hidden`、`color`、`maxSteps` 和工具开关。
-- Oh My OpenAgent Agent 和 Category 管理：支持内置 OMO Agent、`model`、`category`、`variant`、`prompt_append`、`temperature`、`disable`、`thinking` 和 `reasoning`。
-- MCP 管理：local command、remote URL、启用/禁用。
-- Plugin 管理：维护 OpenCode `plugin` 数组。
-- Profile 管理：在 `~/.config/opencode-profiles` 下创建、复制和删除隔离配置目录。
-- 原始 JSON 编辑页：可直接编辑 OpenCode 和 OMO 配置并应用。
-- 保存前自动创建 `backups/` 备份，写入采用临时文件替换。
-- FPCUnit 单元测试覆盖核心配置服务。
+## Features
 
-## 构建
+- Auto-discover, read, validate, and save OpenCode `opencode.json/jsonc`.
+- Manage Oh My OpenAgent `oh-my-openagent.json/jsonc`, with compatibility for the legacy `oh-my-opencode.json/jsonc` names.
+- Manage Providers and Models, including common Provider/NPM SDK presets and model connectivity testing.
+- Manage OpenCode Agents, including built-in `plan`/`build`, `description`, `mode`, `model`, `prompt`, `temperature`, `disable`, `hidden`, `color`, `maxSteps`, and tool switches.
+- Manage Oh My OpenAgent Agents and Categories, including built-in OMO Agents, `model`, `category`, `variant`, `prompt_append`, `temperature`, `disable`, `thinking`, and `reasoning`.
+- Manage MCP entries for local commands, remote URLs, and enabled/disabled state.
+- Manage OpenCode `plugin` array entries.
+- Manage Profiles by creating, copying, and deleting isolated config directories under `~/.config/opencode-profiles`.
+- Inspect OpenCode SQLite usage metadata from `~/.local/share/opencode/opencode.db` without reading message bodies.
+- View project/session/model token usage with compact statistics and charts.
+- Edit raw OpenCode and OMO JSON directly when needed.
+- Automatically create backups under `backups/` before saving, using temporary file replacement for writes.
+- FPCUnit tests cover the core configuration, path, preset, profile, and session usage services.
 
-环境要求：FreePascal 和 Lazarus 已加入 `PATH`。
+## UI Language
+
+The application defaults to English. Use the Language selector in the left navigation to switch between English and Chinese at runtime.
+
+## Build
+
+Requirements: FreePascal and Lazarus must be available on `PATH`, or set `LAZBUILD` to the full `lazbuild` executable path.
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
 ```
 
-构建产物默认输出到：
+Default Windows output:
 
 ```text
 lib/x86_64-win64/opencode_manager.exe
 ```
 
-也可以用 Lazarus 直接打开：
+You can also open the Lazarus project directly:
 
 ```text
 src/app/opencode_manager.lpi
 ```
 
-## 测试
+## Test
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1
 ```
 
-测试项目位于：
+CI-friendly test command:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/ci-test.ps1
+```
+
+Test project:
 
 ```text
 tests/opencode_manager_tests.lpi
 ```
 
-## 项目结构
+## Release Builds
+
+GitHub Actions builds downloadable zip artifacts on push and pull requests for:
+
+- Windows x86_64
+- Linux x86_64
+- Linux aarch64
+- macOS x86_64
+- macOS aarch64
+
+Pushing a `v*` tag publishes the artifacts to a GitHub Release.
+
+## Project Layout
 
 ```text
 src/
-  app/                  LCL 桌面应用入口和主窗体
-  core/                 可测试核心服务，无 UI 依赖
-tests/                  FPCUnit 测试
-scripts/                build/test/clean 脚本
+  app/                  LCL desktop application entry point and main form
+  core/                 Testable core services without UI dependencies
+tests/                  FPCUnit tests
+scripts/                build/test/package scripts
+docs/                   localized documentation
 ```
 
-## 预设
+## Presets
 
-Provider 下拉预设覆盖 `anthropic`、`openai`、`google`、`openrouter`、`github-copilot`、`azure`、`bedrock`、`vertex`、`mistral`、`groq`、`deepseek`、`xai`、`together`、`fireworks`、`perplexity` 和 `ollama`。选择预设会自动填充显示名、NPM SDK 和默认 Base URL，仍可手动覆盖。
+Provider presets include `anthropic`, `openai`, `google`, `openrouter`, `github-copilot`, `azure`, `bedrock`, `vertex`, `mistral`, `groq`, `deepseek`, `xai`, `together`, `fireworks`, `perplexity`, and `ollama`. Selecting a preset fills the display name, NPM SDK, and default Base URL while still allowing manual edits.
 
-内置 OpenCode Agent 与 Studio 行为保持一致：`plan` 和 `build` 默认显示，可编辑或禁用，但不能删除。OMO 内置 Agent 包含 `Sisyphus`、`oracle`、`librarian`、`frontend-ui-ux-engineer`、`document-writer`、`multimodal-looker` 和 `explore`。
+Built-in OpenCode Agents match Studio behavior: `plan` and `build` are shown by default and can be edited or disabled, but not deleted. Built-in OMO Agents include `Sisyphus`, `oracle`, `librarian`, `frontend-ui-ux-engineer`, `document-writer`, `multimodal-looker`, and `explore`.
 
-## 配置位置
+## Config Paths
 
-默认 OpenCode 配置探测顺序：
+Default OpenCode config discovery order:
 
-1. `OPENCODE_CONFIG` 指向的文件
-2. `OPENCODE_CONFIG_DIR` 指向的目录
-3. `~/.config/opencode/opencode.json` 或 `~/.config/opencode/opencode.jsonc` 已存在时使用 `~/.config/opencode`
-4. Windows 上回退到 `%APPDATA%/opencode/opencode.jsonc`
-5. 其他平台回退到 `~/.config/opencode/opencode.jsonc`
+1. File pointed to by `OPENCODE_CONFIG`
+2. Directory pointed to by `OPENCODE_CONFIG_DIR`
+3. Existing `~/.config/opencode/opencode.jsonc` or `~/.config/opencode/opencode.json`
+4. Windows fallback `%APPDATA%/opencode/opencode.jsonc`
+5. Other platforms fallback `~/.config/opencode/opencode.jsonc`
 
-支持环境变量：
+Supported environment variables:
 
 - `OPENCODE_CONFIG`
 - `OPENCODE_CONFIG_DIR`
 
-Oh My OpenAgent 配置按以下顺序探测：
+Oh My OpenAgent config discovery order:
 
 - `oh-my-openagent.jsonc`
 - `oh-my-openagent.json`
 - `oh-my-opencode.jsonc`
 - `oh-my-opencode.json`
 
-## 开发约定
+OpenCode usage database discovery prioritizes `~/.local/share/opencode/opencode.db` and falls back to common platform app data locations when the database has the expected OpenCode tables.
 
-- 使用 Conventional Commit，例如 `feat(config): add provider editor`。
-- 核心逻辑放在 `src/core`，保持可测试。
-- UI 只负责数据绑定和交互，不直接拼接 JSON 字符串。
-- 保存配置前保留未知字段，避免破坏 OpenCode 新版本配置。
+## Development Notes
+
+- Use Conventional Commit messages, for example `feat(config): add provider editor`.
+- Keep core logic in `src/core` so it remains testable.
+- Keep the UI focused on data binding and interaction; do not manually assemble JSON strings in UI code.
+- Preserve unknown fields while saving config files to avoid breaking newer OpenCode versions.

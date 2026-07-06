@@ -1,6 +1,11 @@
 $ErrorActionPreference = 'Stop'
 
-lazbuild "tests/opencode_manager_tests.lpi"
+$lazbuild = if ($env:LAZBUILD) { $env:LAZBUILD } else { 'lazbuild' }
+& $lazbuild "tests/opencode_manager_tests.lpi"
+
+if (-not (Test-Path -LiteralPath "lib/tests")) {
+  throw 'Test build completed but lib/tests was not created.'
+}
 
 $runner = Get-ChildItem -LiteralPath "lib/tests" -Recurse -File |
   Where-Object { $_.Name -eq 'test_runner' -or $_.Name -eq 'test_runner.exe' } |

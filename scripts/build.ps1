@@ -1,3 +1,4 @@
 $ErrorActionPreference = 'Stop'
 
-lazbuild "src/app/opencode_manager.lpi"
+$lazbuild = if ($env:LAZBUILD) { $env:LAZBUILD } else { 'lazbuild' }
+& $lazbuild "src/app/opencode_manager.lpi"

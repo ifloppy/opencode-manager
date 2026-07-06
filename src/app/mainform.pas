@@ -7,7 +7,7 @@ interface
 uses
   Classes, SysUtils, fpjson, Forms, Controls, Graphics, Dialogs, StdCtrls,
   ComCtrls, ExtCtrls, Spin, oc_config, oc_omo_config, oc_paths, oc_profiles,
-  oc_presets, oc_http, oc_sessions;
+  oc_presets, oc_http, oc_sessions, oc_i18n;
 
 type
   { TMainForm }
@@ -20,6 +20,8 @@ type
     FModelListKeys: TStringList;
     FSessionSummary: TSessionUsageSummary;
     NavPanel: TPanel;
+    LanguageLabel: TLabel;
+    LanguageCombo: TComboBox;
     PageControl: TPageControl;
     Status: TStatusBar;
 
@@ -61,6 +63,8 @@ type
     PluginNameEdit: TEdit;
     PluginNewButton, PluginSaveButton, PluginDeleteButton: TButton;
     ProfileNameEdit: TEdit;
+    ProfileNameLabel, ProfileRootLabel: TLabel;
+    ProfileCreateButton, ProfileDeleteButton: TButton;
 
     OMOAgentList, OMOCategoryList: TListBox;
     OMOAgentIdEdit, OMOAgentModelEdit: TEdit;
@@ -89,6 +93,7 @@ type
     SessionRefreshButton: TButton;
 
     procedure BuildUi;
+    procedure ApplyLanguage;
     procedure AdjustResponsiveLayout;
     function AddTab(const ACaption: string): TTabSheet;
     function AddNavButton(const ACaption: string; PageIndex: Integer): TButton;
@@ -125,6 +130,7 @@ type
     procedure OnOpenConfig(Sender: TObject);
     procedure OnFormResize(Sender: TObject);
     procedure OnNavButtonClick(Sender: TObject);
+    procedure OnLanguageChange(Sender: TObject);
     procedure OnSaveConfig(Sender: TObject);
     procedure OnReload(Sender: TObject);
     procedure OnValidate(Sender: TObject);
@@ -180,7 +186,7 @@ const
 constructor TMainForm.Create(TheOwner: TComponent);
 begin
   inherited Create(TheOwner);
-  Caption := 'OpenCode 配置管理器';
+  Caption := UiText('OpenCode Configuration Manager', 'OpenCode 配置管理器');
   Width := 1180;
   Height := 780;
   Constraints.MinWidth := 1180;
@@ -191,6 +197,7 @@ begin
   FProfiles := TProfileManager.Create;
   FModelListKeys := TStringList.Create;
   BuildUi;
+  ApplyLanguage;
   OnResize := @OnFormResize;
   LoadDefaultConfigs;
 end;
@@ -298,6 +305,18 @@ begin
   NavPanel.Width := 200;
   NavPanel.BevelOuter := bvNone;
   NavPanel.Color := clBtnFace;
+
+  LanguageLabel := TLabel.Create(NavPanel);
+  LanguageLabel.Parent := NavPanel;
+  LanguageLabel.SetBounds(12, 660, 176, 22);
+  LanguageCombo := TComboBox.Create(NavPanel);
+  LanguageCombo.Parent := NavPanel;
+  LanguageCombo.Style := csDropDownList;
+  LanguageCombo.SetBounds(12, 684, 176, 28);
+  LanguageCombo.Items.Add(UiLanguageName(ulEnglish));
+  LanguageCombo.Items.Add(UiLanguageName(ulChinese));
+  LanguageCombo.ItemIndex := Ord(CurrentUiLanguage);
+  LanguageCombo.OnChange := @OnLanguageChange;
 
   PageControl := TPageControl.Create(Self);
   PageControl.Parent := Self;
@@ -431,10 +450,10 @@ begin
 
   Tab := AddTab('Profile');
   ProfileList := TListBox.Create(Tab); ProfileList.Parent := Tab; ProfileList.SetBounds(16, 16, 260, 590); ProfileList.Anchors := [akLeft, akTop, akBottom];
-  AddLabel(Tab, 'Profile 名称', 310, 20); ProfileNameEdit := AddEdit(Tab, 430, 16, 260);
-  AddButton(Tab, '从当前配置创建', 430, 58, 160, @OnCreateProfile);
-  AddButton(Tab, '删除 Profile', 600, 58, 130, @OnDeleteProfile);
-  AddLabel(Tab, 'Profile 根目录: ' + FProfiles.RootDir, 310, 110);
+  ProfileNameLabel := AddLabel(Tab, 'Profile 名称', 310, 20); ProfileNameEdit := AddEdit(Tab, 430, 16, 260);
+  ProfileCreateButton := AddButton(Tab, '从当前配置创建', 430, 58, 160, @OnCreateProfile);
+  ProfileDeleteButton := AddButton(Tab, '删除 Profile', 600, 58, 130, @OnDeleteProfile);
+  ProfileRootLabel := AddLabel(Tab, 'Profile 根目录: ' + FProfiles.RootDir, 310, 110);
 
   Tab := AddTab('聊天记录');
   SessionPathLabel := AddLabel(Tab, '数据库文件', 16, 20); SessionPathEdit := AddEdit(Tab, 130, 16, 700); SessionPathEdit.Anchors := [akLeft, akTop, akRight];
@@ -475,6 +494,129 @@ begin
   PageControl.ActivePageIndex := 0;
   UpdateNavigation;
   AdjustResponsiveLayout;
+end;
+
+procedure TMainForm.ApplyLanguage;
+var
+  I: Integer;
+  NavCaptions: array[0..7] of string;
+begin
+  Caption := UiText('OpenCode Configuration Manager', 'OpenCode 配置管理器');
+  LanguageLabel.Caption := UiText('Language', '语言');
+  if LanguageCombo.ItemIndex <> Ord(CurrentUiLanguage) then
+    LanguageCombo.ItemIndex := Ord(CurrentUiLanguage);
+
+  NavCaptions[0] := UiText('Overview', '概览');
+  NavCaptions[1] := UiText('Provider / Model', 'Provider / Model');
+  NavCaptions[2] := UiText('OpenCode Agent', 'OpenCode Agent');
+  NavCaptions[3] := UiText('OMO Agents / Categories', 'OMO Agents / Categories');
+  NavCaptions[4] := UiText('MCP / Plugin', 'MCP / Plugin');
+  NavCaptions[5] := UiText('Profile', 'Profile');
+  NavCaptions[6] := UiText('Chat Usage', '聊天记录');
+  NavCaptions[7] := UiText('Raw JSON', '原始 JSON');
+  for I := 0 to PageControl.PageCount - 1 do
+    if I <= High(NavCaptions) then
+      PageControl.Pages[I].Caption := NavCaptions[I];
+  for I := 0 to NavPanel.ControlCount - 1 do
+    if (NavPanel.Controls[I] is TButton) and (TButton(NavPanel.Controls[I]).Tag <= High(NavCaptions)) then
+      TButton(NavPanel.Controls[I]).Caption := NavCaptions[TButton(NavPanel.Controls[I]).Tag];
+
+  ConfigPathLabel.Caption := UiText('OpenCode config', 'OpenCode 配置');
+  ConfigOpenButton.Caption := UiText('Open', '打开');
+  ConfigSaveButton.Caption := UiText('Save all', '保存全部');
+  OMOPathLabel.Caption := UiText('OMO config', 'OMO 配置');
+  ReloadButton.Caption := UiText('Reload', '重新加载');
+  ValidateButton.Caption := UiText('Validate', '校验');
+  ValidationMemo.Hint := UiText('Config paths, validation results, and structure issues', '配置路径、校验结果和结构问题');
+
+  ProviderList.Hint := UiText('Provider list', 'Provider 列表');
+  ProviderNameLabel.Caption := UiText('Display name', '显示名');
+  ProviderSaveButton.Caption := UiText('Save Provider', '保存 Provider');
+  ProviderDeleteButton.Caption := UiText('Delete Provider', '删除 Provider');
+  ModelList.Hint := UiText('Model list: select one to show the full name and key in the status bar', '模型列表：选择后状态栏显示完整名称和 key');
+  ModelNameLabel.Caption := UiText('Model display name', '模型显示名');
+  ModelSaveButton.Caption := UiText('Save Model', '保存 Model');
+  ModelDeleteButton.Caption := UiText('Delete Model', '删除 Model');
+  ModelTestButton.Caption := UiText('Test connectivity', '测试连通性');
+
+  AgentDescriptionLabel.Caption := UiText('Description', '描述');
+  AgentModeLabel.Caption := UiText('Mode', '模式');
+  AgentModelLabel.Caption := UiText('Model', '模型');
+  AgentTempLabel.Caption := UiText('Temperature', '温度');
+  AgentDisabledCheck.Caption := UiText('Disabled', '禁用');
+  AgentHiddenCheck.Caption := UiText('Hidden', '隐藏');
+  AgentColorLabel.Caption := UiText('Color', '颜色');
+  AgentToolsLabel.Caption := UiText('Tools', '工具');
+  AgentSaveButton.Caption := UiText('Save Agent', '保存 Agent');
+  AgentDeleteButton.Caption := UiText('Delete Agent', '删除 Agent');
+
+  OMOAgentList.Hint := UiText('OMO Agent list. Built-in items can be edited or disabled, but not deleted.', 'OMO Agent 列表，内置项可编辑或禁用但不能删除');
+  OMOAgentModelLabel.Caption := UiText('Model', '模型');
+  OMOAgentTempLabel.Caption := UiText('Temperature', '温度');
+  OMOAgentDisabledCheck.Caption := UiText('Disabled', '禁用');
+  OMOAgentPromptLabel.Caption := UiText('Agent prompt_append', 'Agent 提示词追加 prompt_append');
+  OMOAgentPromptLabel.Hint := UiText('Writes the OMO Agent prompt_append field', '写入 OMO Agent 的 prompt_append 字段');
+  OMOAgentPromptMemo.Hint := UiText('OMO Agent prompt_append: appended to this Agent prompt', 'OMO Agent prompt_append：附加到该 Agent 的提示词');
+  OMOAgentSaveButton.Caption := UiText('Save OMO Agent', '保存 OMO Agent');
+  OMOAgentDeleteButton.Caption := UiText('Delete OMO Agent', '删除 OMO Agent');
+  OMOCategoryList.Hint := UiText('OMO Category list', 'OMO Category 列表');
+  OMOCategoryModelLabel.Caption := UiText('Model', '模型');
+  OMOCategoryDescLabel.Caption := UiText('Description', '描述');
+  OMOCategoryDisabledCheck.Caption := UiText('Disabled', '禁用');
+  OMOCategoryPromptLabel.Caption := UiText('Category prompt_append', 'Category 提示词追加 prompt_append');
+  OMOCategoryPromptLabel.Hint := UiText('Writes the OMO Category prompt_append field', '写入 OMO Category 的 prompt_append 字段');
+  OMOCategoryPromptMemo.Hint := UiText('OMO Category prompt_append: appended to this Category prompt', 'OMO Category prompt_append：附加到该 Category 的提示词');
+  OMOCategorySaveButton.Caption := UiText('Save Category', '保存 Category');
+  OMOCategoryDeleteButton.Caption := UiText('Delete Category', '删除 Category');
+
+  McpList.Hint := UiText('MCP list', 'MCP 列表');
+  McpTypeLabel.Caption := UiText('Type', '类型');
+  McpTargetLabel.Caption := UiText('Command or URL', '命令或 URL');
+  McpEnabledCheck.Caption := UiText('Enabled', '启用');
+  McpNewButton.Caption := UiText('New MCP', '新增 MCP');
+  McpSaveButton.Caption := UiText('Save MCP', '保存 MCP');
+  McpDeleteButton.Caption := UiText('Delete MCP', '删除 MCP');
+  PluginList.Hint := UiText('Plugin package list', 'Plugin 包列表');
+  PluginNameLabel.Caption := UiText('Plugin package', 'Plugin 包名');
+  PluginNewButton.Caption := UiText('New Plugin', '新增 Plugin');
+  PluginSaveButton.Caption := UiText('Save Plugin', '保存 Plugin');
+  PluginDeleteButton.Caption := UiText('Delete Plugin', '删除 Plugin');
+
+  ProfileNameLabel.Caption := UiText('Profile name', 'Profile 名称');
+  ProfileCreateButton.Caption := UiText('Create from current config', '从当前配置创建');
+  ProfileDeleteButton.Caption := UiText('Delete Profile', '删除 Profile');
+  ProfileRootLabel.Caption := UiText('Profile root: ', 'Profile 根目录: ') + FProfiles.RootDir;
+
+  SessionPathLabel.Caption := UiText('Database file', '数据库文件');
+  SessionRefreshButton.Caption := UiText('Refresh stats', '刷新统计');
+  SessionModelDisplayLabel.Caption := UiText('Model display', '模型显示');
+  SessionModelDisplayEdit.Items[0] := UiText('Model ID', '模型 ID');
+  SessionModelDisplayEdit.Items[1] := UiText('Display name', '显示名');
+  SessionModelDisplayEdit.Hint := UiText('Switch how model columns are shown in usage statistics and charts', '切换聊天统计和图表中模型列的显示方式');
+  SessionPathEdit.Hint := UiText('OpenCode SQLite database, usually at ~/.local/share/opencode/opencode.db', 'OpenCode SQLite 数据库，通常位于 ~/.local/share/opencode/opencode.db');
+  SessionProjectList.Columns[0].Caption := UiText('Project', '项目');
+  SessionProjectList.Columns[1].Caption := UiText('Sessions', '会话');
+  SessionProjectList.Columns[2].Caption := 'Token';
+  SessionList.Columns[0].Caption := UiText('Session', '会话');
+  SessionList.Columns[1].Caption := UiText('Project', '项目');
+  SessionList.Columns[2].Caption := UiText('Model', '模型');
+  SessionList.Columns[3].Caption := 'Agent';
+  SessionList.Columns[4].Caption := 'Token';
+  SessionList.Columns[5].Caption := 'Session ID';
+  SessionModelList.Columns[0].Caption := UiText('Model', '模型');
+  SessionModelList.Columns[1].Caption := UiText('Total Token', '总 Token');
+  SessionModelList.Columns[2].Caption := UiText('Input', '输入');
+  SessionModelList.Columns[3].Caption := UiText('Output', '输出');
+  SessionModelList.Columns[4].Caption := 'Reasoning';
+  SessionModelList.Columns[5].Caption := UiText('Cache read', '缓存读');
+  SessionModelList.Columns[6].Caption := UiText('Cache write', '缓存写');
+  RawApplyButton.Caption := UiText('Apply raw JSON', '从原始 JSON 应用');
+
+  RefreshValidation;
+  PopulateSessionLists;
+  RefreshOverviewStats;
+  if Assigned(SessionChart) then
+    SessionChart.Invalidate;
 end;
 
 procedure TMainForm.AdjustResponsiveLayout;
@@ -752,7 +894,7 @@ begin
   RefreshRaw;
   RefreshSessionSummary;
   RefreshOverviewStats;
-  Status.SimpleText := '已加载: ' + ConfigPathEdit.Text;
+  Status.SimpleText := UiText('Loaded: ', '已加载: ') + ConfigPathEdit.Text;
 end;
 
 function TMainForm.TotalModelCount: Integer;
@@ -870,14 +1012,14 @@ begin
   OverviewMcpLabel.Caption := 'MCP: ' + IntToStr(McpCount);
   OverviewPluginLabel.Caption := 'Plugin: ' + IntToStr(PluginCount);
   OverviewOMOLabel.Caption := 'OMO: ' + IntToStr(OMOAgentCount) + ' / ' + IntToStr(OMOCategoryCount);
-  OverviewSessionLabel.Caption := '会话: ' + IntToStr(FSessionSummary.SessionCount);
+  OverviewSessionLabel.Caption := UiText('Sessions: ', '会话: ') + IntToStr(FSessionSummary.SessionCount);
   OverviewTokenLabel.Caption := 'Token: ' + CompactInt(FSessionSummary.Total.TotalTokens);
-  OverviewTokenLabel.Hint := '总 Token: ' + CompactDetail(FSessionSummary.Total.TotalTokens) +
-    '，输入: ' + CompactDetail(FSessionSummary.Total.InputTokens) +
-    '，输出: ' + CompactDetail(FSessionSummary.Total.OutputTokens) +
-    '，Reasoning: ' + CompactDetail(FSessionSummary.Total.ReasoningTokens) +
-    '，缓存读: ' + CompactDetail(FSessionSummary.Total.CacheReadTokens) +
-    '，缓存写: ' + CompactDetail(FSessionSummary.Total.CacheWriteTokens);
+  OverviewTokenLabel.Hint := UiText('Total Token: ', '总 Token: ') + CompactDetail(FSessionSummary.Total.TotalTokens) +
+    UiText(', input: ', '，输入: ') + CompactDetail(FSessionSummary.Total.InputTokens) +
+    UiText(', output: ', '，输出: ') + CompactDetail(FSessionSummary.Total.OutputTokens) +
+    UiText(', reasoning: ', '，Reasoning: ') + CompactDetail(FSessionSummary.Total.ReasoningTokens) +
+    UiText(', cache read: ', '，缓存读: ') + CompactDetail(FSessionSummary.Total.CacheReadTokens) +
+    UiText(', cache write: ', '，缓存写: ') + CompactDetail(FSessionSummary.Total.CacheWriteTokens);
 end;
 
 procedure TMainForm.RefreshSessionSummary;
@@ -934,14 +1076,14 @@ begin
     Item.SubItems.Add(CompactInt(FSessionSummary.Models[I].Usage.CacheWriteTokens));
   end;
   SessionSummaryMemo.Clear;
-  SessionSummaryMemo.Lines.Add('项目数: ' + IntToStr(FSessionSummary.ProjectCount));
-  SessionSummaryMemo.Lines.Add('会话数: ' + IntToStr(FSessionSummary.SessionCount));
-  SessionSummaryMemo.Lines.Add('总 Token: ' + CompactDetail(FSessionSummary.Total.TotalTokens));
-  SessionSummaryMemo.Lines.Add('输入 Token: ' + CompactDetail(FSessionSummary.Total.InputTokens));
-  SessionSummaryMemo.Lines.Add('输出 Token: ' + CompactDetail(FSessionSummary.Total.OutputTokens));
+  SessionSummaryMemo.Lines.Add(UiText('Projects: ', '项目数: ') + IntToStr(FSessionSummary.ProjectCount));
+  SessionSummaryMemo.Lines.Add(UiText('Sessions: ', '会话数: ') + IntToStr(FSessionSummary.SessionCount));
+  SessionSummaryMemo.Lines.Add(UiText('Total Token: ', '总 Token: ') + CompactDetail(FSessionSummary.Total.TotalTokens));
+  SessionSummaryMemo.Lines.Add(UiText('Input Token: ', '输入 Token: ') + CompactDetail(FSessionSummary.Total.InputTokens));
+  SessionSummaryMemo.Lines.Add(UiText('Output Token: ', '输出 Token: ') + CompactDetail(FSessionSummary.Total.OutputTokens));
   SessionSummaryMemo.Lines.Add('Reasoning Token: ' + CompactDetail(FSessionSummary.Total.ReasoningTokens));
-  SessionSummaryMemo.Lines.Add('缓存读/写 Token: ' + CompactDetail(FSessionSummary.Total.CacheReadTokens) + ' / ' + CompactDetail(FSessionSummary.Total.CacheWriteTokens));
-  SessionSummaryMemo.Lines.Add('数据库: ' + FSessionSummary.RootDir);
+  SessionSummaryMemo.Lines.Add(UiText('Cache read/write Token: ', '缓存读/写 Token: ') + CompactDetail(FSessionSummary.Total.CacheReadTokens) + ' / ' + CompactDetail(FSessionSummary.Total.CacheWriteTokens));
+  SessionSummaryMemo.Lines.Add(UiText('Database: ', '数据库: ') + FSessionSummary.RootDir);
 end;
 
 procedure TMainForm.RefreshValidation;
@@ -950,12 +1092,12 @@ var
   Issue: TValidationIssue;
 begin
   ValidationMemo.Clear;
-  ValidationMemo.Lines.Add('OpenCode 配置: ' + ConfigPathEdit.Text);
+  ValidationMemo.Lines.Add(UiText('OpenCode config: ', 'OpenCode 配置: ') + ConfigPathEdit.Text);
   Issues := FConfig.Validate;
   for Issue in Issues do
     ValidationMemo.Lines.Add('[' + Issue.Severity + '] ' + Issue.Message);
   ValidationMemo.Lines.Add('');
-  ValidationMemo.Lines.Add('Oh My OpenAgent 配置: ' + OMOPathEdit.Text);
+  ValidationMemo.Lines.Add(UiText('Oh My OpenAgent config: ', 'Oh My OpenAgent 配置: ') + OMOPathEdit.Text);
   Issues := FOMO.Validate;
   for Issue in Issues do
     ValidationMemo.Lines.Add('[' + Issue.Severity + '] ' + Issue.Message);
@@ -1182,7 +1324,7 @@ var
 begin
   D := TOpenDialog.Create(Self);
   try
-    D.Filter := 'OpenCode JSON|*.json;*.jsonc|所有文件|*.*';
+    D.Filter := UiText('OpenCode JSON|*.json;*.jsonc|All files|*.*', 'OpenCode JSON|*.json;*.jsonc|所有文件|*.*');
     if D.Execute then
     begin
       ConfigPathEdit.Text := D.FileName;
@@ -1206,6 +1348,17 @@ begin
   end;
 end;
 
+procedure TMainForm.OnLanguageChange(Sender: TObject);
+begin
+  if not Assigned(LanguageCombo) then
+    Exit;
+  if LanguageCombo.ItemIndex = Ord(ulChinese) then
+    CurrentUiLanguage := ulChinese
+  else
+    CurrentUiLanguage := ulEnglish;
+  ApplyLanguage;
+end;
+
 procedure TMainForm.OnFormResize(Sender: TObject);
 begin
   AdjustResponsiveLayout;
@@ -1216,7 +1369,7 @@ begin
   FConfig.SaveToFile(ConfigPathEdit.Text);
   FOMO.SaveToFile(OMOPathEdit.Text);
   RefreshAll;
-  ShowMessage('已保存配置，并在 backups 目录创建备份。');
+  ShowMessage(UiText('Configuration saved. A backup was created in the backups directory.', '已保存配置，并在 backups 目录创建备份。'));
 end;
 
 procedure TMainForm.OnReload(Sender: TObject);
@@ -1279,7 +1432,7 @@ begin
         ModelList.Items.Add(ModelId);
       FModelListKeys.Add(ModelId);
     end;
-    ModelList.Hint := '模型列表：选择后状态栏显示完整名称和 key。当前 ' + IntToStr(ModelList.Items.Count) + ' 项。';
+    ModelList.Hint := UiText('Model list: select one to show the full name and key in the status bar. Current items: ', '模型列表：选择后状态栏显示完整名称和 key。当前 ') + IntToStr(ModelList.Items.Count) + UiText('.', ' 项。');
   finally
     L.Free;
   end;
@@ -1316,9 +1469,9 @@ begin
     end;
   end;
   if ModelNameEdit.Text <> '' then
-    Status.SimpleText := '模型: ' + ModelNameEdit.Text + ' / ' + ModelIdEdit.Text
+    Status.SimpleText := UiText('Model: ', '模型: ') + ModelNameEdit.Text + ' / ' + ModelIdEdit.Text
   else
-    Status.SimpleText := '模型: ' + ModelIdEdit.Text;
+    Status.SimpleText := UiText('Model: ', '模型: ') + ModelIdEdit.Text;
 end;
 
 procedure TMainForm.OnSaveProvider(Sender: TObject);
@@ -1352,12 +1505,12 @@ begin
   R := TestModelConnectivity(ProviderIdEdit.Text, ProviderBaseUrlEdit.Text, ProviderApiKeyEdit.Text, ModelIdEdit.Text);
   if R.Success then
   begin
-    Status.SimpleText := '模型连通性测试成功: HTTP ' + IntToStr(R.StatusCode) + ', ' + IntToStr(R.ResponseTimeMs) + 'ms';
+    Status.SimpleText := UiText('Model connectivity test succeeded: HTTP ', '模型连通性测试成功: HTTP ') + IntToStr(R.StatusCode) + ', ' + IntToStr(R.ResponseTimeMs) + 'ms';
     ShowMessage(Status.SimpleText);
   end
   else
   begin
-    Status.SimpleText := '模型连通性测试失败: ' + R.ErrorMessage;
+    Status.SimpleText := UiText('Model connectivity test failed: ', '模型连通性测试失败: ') + R.ErrorMessage;
     ShowMessage(Status.SimpleText);
   end;
 end;
@@ -1405,7 +1558,7 @@ procedure TMainForm.OnDeleteAgent(Sender: TObject);
 begin
   if IsBuiltinAgent(AgentIdEdit.Text) then
   begin
-    ShowMessage('内置 Agent 不能删除，只能编辑或禁用。');
+    ShowMessage(UiText('Built-in Agents cannot be deleted. They can only be edited or disabled.', '内置 Agent 不能删除，只能编辑或禁用。'));
     Exit;
   end;
   FConfig.DeleteAgent(AgentIdEdit.Text);
@@ -1446,7 +1599,7 @@ begin
   McpTypeEdit.Text := 'local';
   McpTargetEdit.Text := '';
   McpEnabledCheck.Checked := True;
-  Status.SimpleText := '请输入新的 MCP ID、类型和命令或 URL，然后点击保存 MCP。';
+  Status.SimpleText := UiText('Enter the new MCP ID, type, and command or URL, then click Save MCP.', '请输入新的 MCP ID、类型和命令或 URL，然后点击保存 MCP。');
 end;
 
 procedure TMainForm.OnSaveMcp(Sender: TObject);
@@ -1474,8 +1627,8 @@ procedure TMainForm.OnNewPlugin(Sender: TObject);
 begin
   PluginList.ItemIndex := -1;
   PluginNameEdit.Text := '';
-  PluginNameEdit.Hint := '输入新的 Plugin 包名，例如 npm 包名或本地插件路径';
-  Status.SimpleText := '请输入新的 Plugin 包名，然后点击保存 Plugin。';
+  PluginNameEdit.Hint := UiText('Enter a new Plugin package name, such as an npm package or local plugin path', '输入新的 Plugin 包名，例如 npm 包名或本地插件路径');
+  Status.SimpleText := UiText('Enter the new Plugin package name, then click Save Plugin.', '请输入新的 Plugin 包名，然后点击保存 Plugin。');
 end;
 
 procedure TMainForm.OnSavePlugin(Sender: TObject);
@@ -1546,7 +1699,7 @@ procedure TMainForm.OnDeleteOMOAgent(Sender: TObject);
 begin
   if IsBuiltinOMOAgent(OMOAgentIdEdit.Text) then
   begin
-    ShowMessage('内置 OMO Agent 不能删除，只能编辑或禁用。');
+    ShowMessage(UiText('Built-in OMO Agents cannot be deleted. They can only be edited or disabled.', '内置 OMO Agent 不能删除，只能编辑或禁用。'));
     Exit;
   end;
   FOMO.DeleteAgent(OMOAgentIdEdit.Text);
@@ -1643,20 +1796,20 @@ begin
        ((FSessionSummary.Sessions[I].SessionId = '') and (SessionId = FSessionSummary.Sessions[I].SessionName)) then
     begin
       SessionSummaryMemo.Clear;
-      SessionSummaryMemo.Lines.Add('项目: ' + FSessionSummary.Sessions[I].ProjectName);
+      SessionSummaryMemo.Lines.Add(UiText('Project: ', '项目: ') + FSessionSummary.Sessions[I].ProjectName);
       if FSessionSummary.Sessions[I].ProjectPath <> '' then
-        SessionSummaryMemo.Lines.Add('目录: ' + FSessionSummary.Sessions[I].ProjectPath);
-      SessionSummaryMemo.Lines.Add('会话: ' + FSessionSummary.Sessions[I].SessionName);
-      SessionSummaryMemo.Lines.Add('模型: ' + SessionModelCaption(FSessionSummary.Sessions[I].ModelName));
+        SessionSummaryMemo.Lines.Add(UiText('Directory: ', '目录: ') + FSessionSummary.Sessions[I].ProjectPath);
+      SessionSummaryMemo.Lines.Add(UiText('Session: ', '会话: ') + FSessionSummary.Sessions[I].SessionName);
+      SessionSummaryMemo.Lines.Add(UiText('Model: ', '模型: ') + SessionModelCaption(FSessionSummary.Sessions[I].ModelName));
       if SessionModelCaption(FSessionSummary.Sessions[I].ModelName) <> FSessionSummary.Sessions[I].ModelName then
-        SessionSummaryMemo.Lines.Add('模型 ID: ' + FSessionSummary.Sessions[I].ModelName);
+        SessionSummaryMemo.Lines.Add(UiText('Model ID: ', '模型 ID: ') + FSessionSummary.Sessions[I].ModelName);
       if FSessionSummary.Sessions[I].AgentName <> '' then
         SessionSummaryMemo.Lines.Add('Agent: ' + FSessionSummary.Sessions[I].AgentName);
-      SessionSummaryMemo.Lines.Add('总 Token: ' + CompactDetail(FSessionSummary.Sessions[I].Usage.TotalTokens));
-      SessionSummaryMemo.Lines.Add('输入 Token: ' + CompactDetail(FSessionSummary.Sessions[I].Usage.InputTokens));
-      SessionSummaryMemo.Lines.Add('输出 Token: ' + CompactDetail(FSessionSummary.Sessions[I].Usage.OutputTokens));
+      SessionSummaryMemo.Lines.Add(UiText('Total Token: ', '总 Token: ') + CompactDetail(FSessionSummary.Sessions[I].Usage.TotalTokens));
+      SessionSummaryMemo.Lines.Add(UiText('Input Token: ', '输入 Token: ') + CompactDetail(FSessionSummary.Sessions[I].Usage.InputTokens));
+      SessionSummaryMemo.Lines.Add(UiText('Output Token: ', '输出 Token: ') + CompactDetail(FSessionSummary.Sessions[I].Usage.OutputTokens));
       SessionSummaryMemo.Lines.Add('Reasoning Token: ' + CompactDetail(FSessionSummary.Sessions[I].Usage.ReasoningTokens));
-      SessionSummaryMemo.Lines.Add('缓存读/写 Token: ' + CompactDetail(FSessionSummary.Sessions[I].Usage.CacheReadTokens) + ' / ' + CompactDetail(FSessionSummary.Sessions[I].Usage.CacheWriteTokens));
+      SessionSummaryMemo.Lines.Add(UiText('Cache read/write Token: ', '缓存读/写 Token: ') + CompactDetail(FSessionSummary.Sessions[I].Usage.CacheReadTokens) + ' / ' + CompactDetail(FSessionSummary.Sessions[I].Usage.CacheWriteTokens));
       SessionSummaryMemo.Lines.Add('Session ID: ' + FSessionSummary.Sessions[I].SessionId);
       Exit;
     end;
@@ -1683,8 +1836,8 @@ begin
   C.Font.Color := clBlack;
   if Length(FSessionSummary.Models) = 0 then
   begin
-    C.TextOut(12, 14, '按模型 Token 用量');
-    C.TextOut(12, CHART_TITLE_H + 4, '未找到可统计的会话 Token 数据');
+    C.TextOut(12, 14, UiText('Token usage by model', '按模型 Token 用量'));
+    C.TextOut(12, CHART_TITLE_H + 4, UiText('No session Token data found for statistics.', '未找到可统计的会话 Token 数据'));
     Exit;
   end;
 
@@ -1697,7 +1850,7 @@ begin
     ChartCount := 20;
   if ChartCount > FitCount then
     ChartCount := FitCount;
-  C.TextOut(12, 14, '按模型 Token 用量 Top ' + IntToStr(ChartCount));
+  C.TextOut(12, 14, UiText('Token usage by model Top ', '按模型 Token 用量 Top ') + IntToStr(ChartCount));
 
   SetLength(Used, Length(FSessionSummary.Models));
   SetLength(ChartIndexes, ChartCount);

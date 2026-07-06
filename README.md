@@ -65,8 +65,8 @@ scripts/                build/test/clean 脚本
 1. `OPENCODE_CONFIG` 指向的文件
 2. `OPENCODE_CONFIG_DIR` 指向的目录
 3. `~/.config/opencode/opencode.json` 或 `~/.config/opencode/opencode.jsonc` 已存在时使用 `~/.config/opencode`
-4. Windows 上回退到 `%APPDATA%/opencode/opencode.json`
-5. 其他平台回退到 `~/.config/opencode/opencode.json`
+4. Windows 上回退到 `%APPDATA%/opencode/opencode.jsonc`
+5. 其他平台回退到 `~/.config/opencode/opencode.jsonc`
 
 支持环境变量：
 

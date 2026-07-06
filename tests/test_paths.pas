@@ -21,6 +21,9 @@ type
   published
     procedure PrefersExplicitConfigFile;
     procedure PrefersExplicitConfigDirWhenNoConfigFile;
+    procedure PrefersJsoncInExplicitConfigDirWhenItExists;
+    procedure PrefersHomeJsoncWhenItExists;
+    procedure PrefersJsoncOverJsonWhenBothExist;
     procedure PrefersHomeConfigWhenItExists;
     procedure FallsBackToAppDataWhenHomeConfigMissing;
   end;
@@ -117,7 +120,37 @@ begin
   ExpectedDir := IncludeTrailingPathDelimiter(FTempDir) + 'explicit-dir';
   FOpenCodeConfigDir := ExpectedDir;
   AssertEquals(ExpandFileName(ExpectedDir), GetOpenCodeConfigDir);
-  AssertEquals(ExpandFileName(IncludeTrailingPathDelimiter(ExpectedDir) + 'opencode.json'), GetOpenCodeConfigFile);
+  AssertEquals(ExpandFileName(IncludeTrailingPathDelimiter(ExpectedDir) + 'opencode.jsonc'), GetOpenCodeConfigFile);
+end;
+
+procedure TPathTests.PrefersJsoncInExplicitConfigDirWhenItExists;
+var
+  ExpectedDir: string;
+begin
+  ExpectedDir := IncludeTrailingPathDelimiter(FTempDir) + 'explicit-dir';
+  FOpenCodeConfigDir := ExpectedDir;
+  TouchFile(IncludeTrailingPathDelimiter(ExpectedDir) + 'opencode.jsonc');
+  AssertEquals(ExpandFileName(IncludeTrailingPathDelimiter(ExpectedDir) + 'opencode.jsonc'), GetOpenCodeConfigFile);
+end;
+
+procedure TPathTests.PrefersHomeJsoncWhenItExists;
+var
+  ExpectedDir: string;
+begin
+  ExpectedDir := IncludeTrailingPathDelimiter(FHomeDir) + '.config' + DirectorySeparator + 'opencode';
+  TouchFile(IncludeTrailingPathDelimiter(ExpectedDir) + 'opencode.jsonc');
+  AssertEquals(ExpandFileName(ExpectedDir), GetOpenCodeConfigDir);
+  AssertEquals(ExpandFileName(IncludeTrailingPathDelimiter(ExpectedDir) + 'opencode.jsonc'), GetOpenCodeConfigFile);
+end;
+
+procedure TPathTests.PrefersJsoncOverJsonWhenBothExist;
+var
+  ExpectedDir: string;
+begin
+  ExpectedDir := IncludeTrailingPathDelimiter(FHomeDir) + '.config' + DirectorySeparator + 'opencode';
+  TouchFile(IncludeTrailingPathDelimiter(ExpectedDir) + 'opencode.json');
+  TouchFile(IncludeTrailingPathDelimiter(ExpectedDir) + 'opencode.jsonc');
+  AssertEquals(ExpandFileName(IncludeTrailingPathDelimiter(ExpectedDir) + 'opencode.jsonc'), GetOpenCodeConfigFile);
 end;
 
 procedure TPathTests.PrefersHomeConfigWhenItExists;
@@ -136,7 +169,7 @@ var
 begin
   ExpectedDir := IncludeTrailingPathDelimiter(FAppDataDir) + 'opencode';
   AssertEquals(ExpandFileName(ExpectedDir), GetOpenCodeConfigDir);
-  AssertEquals(ExpandFileName(IncludeTrailingPathDelimiter(ExpectedDir) + 'opencode.json'), GetOpenCodeConfigFile);
+  AssertEquals(ExpandFileName(IncludeTrailingPathDelimiter(ExpectedDir) + 'opencode.jsonc'), GetOpenCodeConfigFile);
 end;
 
 initialization

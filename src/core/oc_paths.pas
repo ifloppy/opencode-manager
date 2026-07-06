@@ -97,15 +97,6 @@ begin
   Result := ExpandFileName(ExpandHomePath(Result));
 end;
 
-function GetOpenCodeConfigFile: string;
-begin
-  Result := ReadEnv('OPENCODE_CONFIG');
-  if Result = '' then
-    Result := IncludeTrailingPathDelimiter(GetOpenCodeConfigDir) + 'opencode.json'
-  else
-    Result := ExpandFileName(ExpandHomePath(Result));
-end;
-
 function ExistingFile(const Dir: string; const Names: array of string): string;
 var
   I: Integer;
@@ -118,6 +109,18 @@ begin
       Exit(Candidate);
   end;
   Result := IncludeTrailingPathDelimiter(Dir) + Names[0];
+end;
+
+function GetOpenCodeConfigFile: string;
+begin
+  Result := ReadEnv('OPENCODE_CONFIG');
+  if Result = '' then
+    Result := ExistingFile(GetOpenCodeConfigDir, [
+      'opencode.jsonc',
+      'opencode.json'
+    ])
+  else
+    Result := ExpandFileName(ExpandHomePath(Result));
 end;
 
 function GetOpenAgentConfigFile(const ConfigDir: string): string;

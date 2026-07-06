@@ -16,7 +16,28 @@ function GetOpenAgentConfigFile(const ConfigDir: string): string;
 function GetProfilesRootDir: string;
 procedure EnsureDir(const Dir: string);
 
+type
+  TGetEnvFunc = function(const Name: string): string;
+
+procedure SetEnvironmentReader(AReader: TGetEnvFunc);
+
 implementation
+
+var
+  EnvironmentReader: TGetEnvFunc = nil;
+
+function ReadEnv(const Name: string): string;
+begin
+  if Assigned(EnvironmentReader) then
+    Result := EnvironmentReader(Name)
+  else
+    Result := GetEnvironmentVariable(Name);
+end;
+
+procedure SetEnvironmentReader(AReader: TGetEnvFunc);
+begin
+  EnvironmentReader := AReader;
+end;
 
 function IncludeTrailingPathDelimiterSafe(const Path: string): string;
 begin
@@ -28,11 +49,16 @@ end;
 
 function GetUserHomeDirSafe: string;
 begin
-  Result := GetEnvironmentVariable('USERPROFILE');
+  Result := ReadEnv('USERPROFILE');
   if Result = '' then
-    Result := GetEnvironmentVariable('HOME');
+    Result := ReadEnv('HOME');
   if Result = '' then
     Result := GetCurrentDir;
+end;
+
+function HomeConfigDir: string;
+begin
+  Result := IncludeTrailingPathDelimiter(GetUserHomeDirSafe) + '.config' + DirectorySeparator + 'opencode';
 end;
 
 function ExpandHomePath(const Path: string): string;
@@ -49,18 +75,23 @@ function DefaultConfigDir: string;
 var
   AppData: string;
 begin
-  AppData := GetEnvironmentVariable('APPDATA');
+  Result := HomeConfigDir;
+  if FileExists(IncludeTrailingPathDelimiter(Result) + 'opencode.json') or
+     FileExists(IncludeTrailingPathDelimiter(Result) + 'opencode.jsonc') then
+    Exit;
+
+  AppData := ReadEnv('APPDATA');
   if AppData <> '' then
     Result := IncludeTrailingPathDelimiter(AppData) + 'opencode'
   else
-    Result := IncludeTrailingPathDelimiter(GetUserHomeDirSafe) + '.config' + DirectorySeparator + 'opencode';
+    Result := HomeConfigDir;
 end;
 
 function GetOpenCodeConfigDir: string;
 begin
-  Result := GetEnvironmentVariable('OPENCODE_CONFIG_DIR');
+  Result := ExtractFileDir(ReadEnv('OPENCODE_CONFIG'));
   if Result = '' then
-    Result := ExtractFileDir(GetEnvironmentVariable('OPENCODE_CONFIG'));
+    Result := ReadEnv('OPENCODE_CONFIG_DIR');
   if Result = '' then
     Result := DefaultConfigDir;
   Result := ExpandFileName(ExpandHomePath(Result));
@@ -68,7 +99,7 @@ end;
 
 function GetOpenCodeConfigFile: string;
 begin
-  Result := GetEnvironmentVariable('OPENCODE_CONFIG');
+  Result := ReadEnv('OPENCODE_CONFIG');
   if Result = '' then
     Result := IncludeTrailingPathDelimiter(GetOpenCodeConfigDir) + 'opencode.json'
   else

@@ -25,6 +25,7 @@ tests/output/
 tmp/
 temp/
 coverage/
+dist/
 
 # OS/editor files
 .DS_Store

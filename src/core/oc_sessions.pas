@@ -11,7 +11,11 @@ type
   TTokenUsage = record
     InputTokens: Int64;
     OutputTokens: Int64;
+    ReasoningTokens: Int64;
+    CacheReadTokens: Int64;
+    CacheWriteTokens: Int64;
     TotalTokens: Int64;
+    Cost: Double;
   end;
 
   TModelTokenUsage = record
@@ -20,38 +24,71 @@ type
   end;
 
   TSessionUsage = record
+    SessionId: string;
     ProjectName: string;
+    ProjectPath: string;
     SessionName: string;
     FileName: string;
+    ModelName: string;
+    AgentName: string;
+    CreatedTime: Int64;
+    UpdatedTime: Int64;
+    Usage: TTokenUsage;
+  end;
+
+  TProjectSessionUsage = record
+    ProjectName: string;
+    ProjectPath: string;
+    SessionCount: Integer;
     Usage: TTokenUsage;
   end;
 
   TModelTokenUsageArray = array of TModelTokenUsage;
   TSessionUsageArray = array of TSessionUsage;
+  TProjectSessionUsageArray = array of TProjectSessionUsage;
 
   TSessionUsageSummary = record
     RootDir: string;
     ProjectCount: Integer;
     SessionCount: Integer;
     Total: TTokenUsage;
+    Projects: TProjectSessionUsageArray;
     Models: TModelTokenUsageArray;
     Sessions: TSessionUsageArray;
   end;
 
+function DiscoverOpenCodeDatabasePath: string;
 function DiscoverOpenCodeSessionsDir(const ConfigDir: string): string;
+function ScanOpenCodeDatabase(const DbPath: string): TSessionUsageSummary;
 function ScanOpenCodeSessions(const RootDir: string): TSessionUsageSummary;
+function NormalizeModelName(const RawModel: string): string;
 procedure ParseSessionText(const ProjectName, SessionName, FileName, Text: string; var Summary: TSessionUsageSummary);
 
 implementation
 
 uses
-  jsonparser, oc_paths;
+  jsonparser, sqlite3conn, sqldb, oc_paths;
 
 procedure AddUsage(var Target: TTokenUsage; const Usage: TTokenUsage);
 begin
   Inc(Target.InputTokens, Usage.InputTokens);
   Inc(Target.OutputTokens, Usage.OutputTokens);
+  Inc(Target.ReasoningTokens, Usage.ReasoningTokens);
+  Inc(Target.CacheReadTokens, Usage.CacheReadTokens);
+  Inc(Target.CacheWriteTokens, Usage.CacheWriteTokens);
   Inc(Target.TotalTokens, Usage.TotalTokens);
+  Target.Cost := Target.Cost + Usage.Cost;
+end;
+
+procedure ClearUsage(var Usage: TTokenUsage);
+begin
+  Usage.InputTokens := 0;
+  Usage.OutputTokens := 0;
+  Usage.ReasoningTokens := 0;
+  Usage.CacheReadTokens := 0;
+  Usage.CacheWriteTokens := 0;
+  Usage.TotalTokens := 0;
+  Usage.Cost := 0;
 end;
 
 function ReadInt64Field(Obj: TJSONObject; const Names: array of string): Int64;
@@ -77,7 +114,11 @@ var
 begin
   Result.InputTokens := 0;
   Result.OutputTokens := 0;
+  Result.ReasoningTokens := 0;
+  Result.CacheReadTokens := 0;
+  Result.CacheWriteTokens := 0;
   Result.TotalTokens := 0;
+  Result.Cost := 0;
   if not Assigned(Obj) then
     Exit;
 
@@ -103,7 +144,8 @@ begin
   end;
 
   if Result.TotalTokens = 0 then
-    Result.TotalTokens := Result.InputTokens + Result.OutputTokens;
+    Result.TotalTokens := Result.InputTokens + Result.OutputTokens + Result.ReasoningTokens +
+      Result.CacheReadTokens + Result.CacheWriteTokens;
 end;
 
 function FindModelName(Obj: TJSONObject; const CurrentModel: string): string;
@@ -122,6 +164,45 @@ begin
   Data := Obj.Find('model_id');
   if Assigned(Data) and (Data.JSONType = jtString) and (Data.AsString <> '') then
     Result := Data.AsString;
+end;
+
+function NormalizeModelName(const RawModel: string): string;
+var
+  Data: TJSONData;
+  Obj: TJSONObject;
+  ModelId, ProviderId: string;
+begin
+  Result := Trim(RawModel);
+  if Result = '' then
+    Exit('未知模型');
+  if (Result[1] <> '{') and (Result[1] <> '[') then
+    Exit;
+  try
+    Data := GetJSON(Result);
+    try
+      if Data is TJSONObject then
+      begin
+        Obj := TJSONObject(Data);
+        ModelId := Obj.Get('id', '');
+        ProviderId := Obj.Get('providerID', '');
+        if ProviderId = '' then
+          ProviderId := Obj.Get('providerId', '');
+        if ProviderId = '' then
+          ProviderId := Obj.Get('provider', '');
+        if ModelId <> '' then
+        begin
+          if ProviderId <> '' then
+            Result := ProviderId + '/' + ModelId
+          else
+            Result := ModelId;
+        end;
+      end;
+    finally
+      Data.Free;
+    end;
+  except
+    // Keep the raw model string if OpenCode changes this field to a non-JSON format.
+  end;
 end;
 
 procedure AddModelUsage(var Summary: TSessionUsageSummary; const ModelName: string; const Usage: TTokenUsage);
@@ -146,6 +227,29 @@ begin
   Summary.Models[N].Usage := Usage;
 end;
 
+procedure AddProjectUsage(var Summary: TSessionUsageSummary; const ProjectName, ProjectPath: string; const Usage: TTokenUsage);
+var
+  I, N: Integer;
+  Name: string;
+begin
+  Name := ProjectName;
+  if Name = '' then
+    Name := '默认项目';
+  for I := 0 to High(Summary.Projects) do
+    if (Summary.Projects[I].ProjectName = Name) and (Summary.Projects[I].ProjectPath = ProjectPath) then
+    begin
+      Inc(Summary.Projects[I].SessionCount);
+      AddUsage(Summary.Projects[I].Usage, Usage);
+      Exit;
+    end;
+  N := Length(Summary.Projects);
+  SetLength(Summary.Projects, N + 1);
+  Summary.Projects[N].ProjectName := Name;
+  Summary.Projects[N].ProjectPath := ProjectPath;
+  Summary.Projects[N].SessionCount := 1;
+  Summary.Projects[N].Usage := Usage;
+end;
+
 procedure AddSessionUsage(var Summary: TSessionUsageSummary; const ProjectName, SessionName, FileName: string; const Usage: TTokenUsage);
 var
   N: Integer;
@@ -155,9 +259,11 @@ begin
   N := Length(Summary.Sessions);
   SetLength(Summary.Sessions, N + 1);
   Summary.Sessions[N].ProjectName := ProjectName;
+  Summary.Sessions[N].ProjectPath := '';
   Summary.Sessions[N].SessionName := SessionName;
   Summary.Sessions[N].FileName := FileName;
   Summary.Sessions[N].Usage := Usage;
+  AddProjectUsage(Summary, ProjectName, '', Usage);
 end;
 
 procedure VisitJson(Data: TJSONData; const CurrentModel: string; var Summary: TSessionUsageSummary; var SessionUsage: TTokenUsage);
@@ -218,7 +324,11 @@ var
 begin
   SessionUsage.InputTokens := 0;
   SessionUsage.OutputTokens := 0;
+  SessionUsage.ReasoningTokens := 0;
+  SessionUsage.CacheReadTokens := 0;
+  SessionUsage.CacheWriteTokens := 0;
   SessionUsage.TotalTokens := 0;
+  SessionUsage.Cost := 0;
   ParsedWhole := False;
   if (LowerCase(ExtractFileExt(FileName)) <> '.jsonl') and (LowerCase(ExtractFileExt(FileName)) <> '.ndjson') then
   begin
@@ -243,6 +353,84 @@ begin
   AddSessionUsage(Summary, ProjectName, SessionName, FileName, SessionUsage);
 end;
 
+function JoinPath(const Parts: array of string): string;
+var
+  I: Integer;
+begin
+  Result := '';
+  for I := Low(Parts) to High(Parts) do
+    if Parts[I] <> '' then
+    begin
+      if Result = '' then
+        Result := Parts[I]
+      else
+        Result := IncludeTrailingPathDelimiter(Result) + Parts[I];
+    end;
+end;
+
+function FileHasExpectedOpenCodeTables(const DbPath: string): Boolean;
+var
+  Conn: TSQLite3Connection;
+  Tran: TSQLTransaction;
+  Query: TSQLQuery;
+  Found: Integer;
+begin
+  Result := False;
+  if not FileExists(DbPath) then
+    Exit;
+  Conn := TSQLite3Connection.Create(nil);
+  Tran := TSQLTransaction.Create(nil);
+  Query := TSQLQuery.Create(nil);
+  try
+    Conn.DatabaseName := DbPath;
+    Conn.Transaction := Tran;
+    Query.DataBase := Conn;
+    Query.Transaction := Tran;
+    Conn.Open;
+    Tran.StartTransaction;
+    Query.SQL.Text := 'SELECT COUNT(*) AS found FROM sqlite_master WHERE type = ''table'' AND name IN (''session'', ''project'')';
+    Query.Open;
+    Found := Query.FieldByName('found').AsInteger;
+    Query.Close;
+    Result := Found >= 2;
+    Tran.Rollback;
+  except
+    if Tran.Active then
+      Tran.Rollback;
+    Result := False;
+  end;
+  Query.Free;
+  Tran.Free;
+  Conn.Free;
+end;
+
+function DiscoverOpenCodeDatabasePath: string;
+var
+  Home, Candidate, AppData: string;
+begin
+  Result := '';
+  Home := GetUserHomeDirSafe;
+  Candidate := JoinPath([Home, '.local', 'share', 'opencode', 'opencode.db']);
+  if FileHasExpectedOpenCodeTables(Candidate) then
+    Exit(Candidate);
+
+  AppData := GetEnvironmentVariable('LOCALAPPDATA');
+  Candidate := JoinPath([AppData, 'opencode', 'opencode.db']);
+  if FileHasExpectedOpenCodeTables(Candidate) then
+    Exit(Candidate);
+
+  AppData := GetEnvironmentVariable('APPDATA');
+  Candidate := JoinPath([AppData, 'opencode', 'opencode.db']);
+  if FileHasExpectedOpenCodeTables(Candidate) then
+    Exit(Candidate);
+
+  Candidate := JoinPath([Home, 'Library', 'Application Support', 'opencode', 'opencode.db']);
+  if FileHasExpectedOpenCodeTables(Candidate) then
+    Exit(Candidate);
+
+  Result := '';
+end;
+
 function DiscoverOpenCodeSessionsDir(const ConfigDir: string): string;
 var
   Home, Candidate: string;
@@ -262,6 +450,110 @@ begin
   if DirectoryExists(Candidate) then
     Exit(Candidate);
   Result := IncludeTrailingPathDelimiter(ConfigDir) + 'sessions';
+end;
+
+procedure AddDatabaseSession(var Summary: TSessionUsageSummary; Query: TSQLQuery);
+var
+  N: Integer;
+  Usage: TTokenUsage;
+  ProjectName, ProjectPath, ModelName: string;
+begin
+  ClearUsage(Usage);
+  Usage.InputTokens := Query.FieldByName('tokens_input').AsLargeInt;
+  Usage.OutputTokens := Query.FieldByName('tokens_output').AsLargeInt;
+  Usage.ReasoningTokens := Query.FieldByName('tokens_reasoning').AsLargeInt;
+  Usage.CacheReadTokens := Query.FieldByName('tokens_cache_read').AsLargeInt;
+  Usage.CacheWriteTokens := Query.FieldByName('tokens_cache_write').AsLargeInt;
+  Usage.TotalTokens := Usage.InputTokens + Usage.OutputTokens + Usage.ReasoningTokens +
+    Usage.CacheReadTokens + Usage.CacheWriteTokens;
+  Usage.Cost := Query.FieldByName('cost').AsFloat;
+
+  ProjectName := Query.FieldByName('project_name').AsString;
+  ProjectPath := Query.FieldByName('project_path').AsString;
+  if ProjectName = '' then
+  begin
+    ProjectName := ExtractFileName(ExcludeTrailingPathDelimiter(ProjectPath));
+    if ProjectName = '' then
+      ProjectName := '默认项目';
+  end;
+  ModelName := NormalizeModelName(Query.FieldByName('model').AsString);
+
+  AddUsage(Summary.Total, Usage);
+  AddModelUsage(Summary, ModelName, Usage);
+  AddProjectUsage(Summary, ProjectName, ProjectPath, Usage);
+
+  N := Length(Summary.Sessions);
+  SetLength(Summary.Sessions, N + 1);
+  Summary.Sessions[N].SessionId := Query.FieldByName('id').AsString;
+  Summary.Sessions[N].ProjectName := ProjectName;
+  Summary.Sessions[N].ProjectPath := ProjectPath;
+  Summary.Sessions[N].SessionName := Query.FieldByName('title').AsString;
+  if Summary.Sessions[N].SessionName = '' then
+    Summary.Sessions[N].SessionName := Query.FieldByName('slug').AsString;
+  Summary.Sessions[N].FileName := Query.FieldByName('id').AsString;
+  Summary.Sessions[N].ModelName := ModelName;
+  Summary.Sessions[N].AgentName := Query.FieldByName('agent').AsString;
+  Summary.Sessions[N].CreatedTime := Query.FieldByName('time_created').AsLargeInt;
+  Summary.Sessions[N].UpdatedTime := Query.FieldByName('time_updated').AsLargeInt;
+  Summary.Sessions[N].Usage := Usage;
+end;
+
+function ScanOpenCodeDatabase(const DbPath: string): TSessionUsageSummary;
+var
+  Conn: TSQLite3Connection;
+  Tran: TSQLTransaction;
+  Query: TSQLQuery;
+begin
+  Result.RootDir := DbPath;
+  Result.ProjectCount := 0;
+  Result.SessionCount := 0;
+  ClearUsage(Result.Total);
+  SetLength(Result.Projects, 0);
+  SetLength(Result.Models, 0);
+  SetLength(Result.Sessions, 0);
+  if (DbPath = '') or (not FileExists(DbPath)) or (not FileHasExpectedOpenCodeTables(DbPath)) then
+    Exit;
+
+  Conn := TSQLite3Connection.Create(nil);
+  Tran := TSQLTransaction.Create(nil);
+  Query := TSQLQuery.Create(nil);
+  try
+    Conn.DatabaseName := DbPath;
+    Conn.Transaction := Tran;
+    Query.DataBase := Conn;
+    Query.Transaction := Tran;
+    Conn.Open;
+    Tran.StartTransaction;
+    Query.SQL.Text :=
+      'SELECT s.id, s.slug, s.title, s.model, s.agent, s.time_created, s.time_updated, ' +
+      's.cost, s.tokens_input, s.tokens_output, s.tokens_reasoning, s.tokens_cache_read, s.tokens_cache_write, ' +
+      'COALESCE(NULLIF(p.name, ''''), NULLIF(s.directory, '''')) AS project_name, ' +
+      'COALESCE(NULLIF(p.worktree, ''''), NULLIF(s.directory, '''')) AS project_path ' +
+      'FROM session s LEFT JOIN project p ON s.project_id = p.id ' +
+      'ORDER BY s.time_updated DESC, s.time_created DESC';
+    Query.Open;
+    while not Query.EOF do
+    begin
+      AddDatabaseSession(Result, Query);
+      Query.Next;
+    end;
+    Query.Close;
+    Result.ProjectCount := Length(Result.Projects);
+    Result.SessionCount := Length(Result.Sessions);
+    Tran.Rollback;
+  except
+    if Tran.Active then
+      Tran.Rollback;
+    SetLength(Result.Projects, 0);
+    SetLength(Result.Models, 0);
+    SetLength(Result.Sessions, 0);
+    Result.ProjectCount := 0;
+    Result.SessionCount := 0;
+    ClearUsage(Result.Total);
+  end;
+  Query.Free;
+  Tran.Free;
+  Conn.Free;
 end;
 
 procedure ScanDir(const RootDir, Dir: string; var Summary: TSessionUsageSummary; Projects: TStringList);
@@ -319,6 +611,7 @@ begin
   Result.Total.TotalTokens := 0;
   SetLength(Result.Models, 0);
   SetLength(Result.Sessions, 0);
+  SetLength(Result.Projects, 0);
   if (RootDir = '') or (not DirectoryExists(RootDir)) then
     Exit;
   Projects := TStringList.Create;

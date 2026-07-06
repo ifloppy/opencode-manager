@@ -1,0 +1,104 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.artifact }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: opencode-manager-windows-x86_64
+            runner: windows-latest
+            os: windows
+          - artifact: opencode-manager-linux-x86_64
+            runner: ubuntu-latest
+            os: linux
+          - artifact: opencode-manager-linux-aarch64
+            runner: ubuntu-24.04-arm
+            os: linux
+          - artifact: opencode-manager-macos-x86_64
+            runner: macos-13
+            os: macos
+          - artifact: opencode-manager-macos-aarch64
+            runner: macos-14
+            os: macos
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Lazarus on Windows
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          choco install lazarus -y --no-progress
+          "C:\lazarus" | Out-File -FilePath $env:GITHUB_PATH -Append
+          "C:\lazarus\fpc\bin\x86_64-win64" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Install Lazarus on Linux
+        if: matrix.os == 'linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends lazarus fpc zip libgtk2.0-dev
+
+      - name: Install Lazarus on macOS
+        if: matrix.os == 'macos'
+        shell: bash
+        run: |
+          brew update
+          brew install fpc lazarus
+
+      - name: Show tool versions
+        shell: pwsh
+        run: |
+          lazbuild --version
+          fpc -iV
+
+      - name: Test
+        shell: pwsh
+        run: ./scripts/ci-test.ps1
+
+      - name: Build application
+        shell: pwsh
+        run: lazbuild "src/app/opencode_manager.lpi"
+
+      - name: Package
+        id: package
+        shell: pwsh
+        run: ./scripts/ci-package.ps1 -ArtifactName "${{ matrix.artifact }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ steps.package.outputs.archive }}
+          if-no-files-found: error
+
+  release:
+    name: Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/*.zip

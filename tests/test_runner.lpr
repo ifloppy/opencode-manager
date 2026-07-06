@@ -3,7 +3,7 @@ program test_runner;
 {$mode objfpc}{$H+}
 
 uses
-  Classes, SysUtils, consoletestrunner, test_json, test_config, test_paths, test_profiles;
+  Classes, SysUtils, consoletestrunner, test_json, test_config, test_paths, test_profiles, test_presets;
 
 type
   TOpenCodeManagerTestRunner = class(TTestRunner)

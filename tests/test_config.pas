@@ -51,7 +51,7 @@ begin
   try
     Cfg.UpsertProvider('openai-compatible', 'OpenAI Compatible', '@ai-sdk/openai-compatible', 'https://api.example.com/v1', '{env:API_KEY}');
     Cfg.UpsertModel('openai-compatible', 'coder-model', 'Coder Model');
-    Cfg.UpsertAgent('review', 'Reviews code', 'subagent', 'openai-compatible/coder-model', 'Review only.', 0.1, False);
+    Cfg.UpsertAgent('review', 'Reviews code', 'subagent', 'openai-compatible/coder-model', 'Review only.', 0.1, False, '#336699', 12, True, 'read,grep');
     Cfg.UpsertMcpLocal('context7', 'npx -y @upstash/context7-mcp', True);
     Cfg.UpsertPlugin('oh-my-openagent@latest');
 
@@ -62,6 +62,8 @@ begin
       L.Free;
     end;
     AssertTrue(Pos('coder-model', Cfg.AsJson) > 0);
+    AssertTrue(Pos('maxSteps', Cfg.AsJson) > 0);
+    AssertTrue(Pos('read', Cfg.AsJson) > 0);
     AssertTrue(Pos('oh-my-openagent@latest', Cfg.AsJson) > 0);
   finally
     Cfg.Free;
@@ -91,8 +93,8 @@ var
 begin
   Cfg := TOMOConfig.Create;
   try
-    Cfg.UpsertAgent('oracle', 'openai/gpt-5.5', 'ultrabrain', 'high', 'Think deeply.', 0.2, False);
-    Cfg.UpsertCategory('quick', 'opencode/gpt-5-nano', 'Fast tasks', 'low', 'Be concise.', False);
+    Cfg.UpsertAgent('oracle', 'openai/gpt-5.5', 'ultrabrain', 'high', 'Think deeply.', 0.2, False, 'enabled', 'high');
+    Cfg.UpsertCategory('quick', 'opencode/gpt-5-nano', 'Fast tasks', 'low', 'Be concise.', False, 'disabled', 'low');
     L := Cfg.AgentIds;
     try
       AssertTrue(L.IndexOf('oracle') >= 0);
@@ -100,6 +102,8 @@ begin
       L.Free;
     end;
     AssertTrue(Pos('ultrabrain', Cfg.AsJson) > 0);
+    AssertTrue(Pos('thinking', Cfg.AsJson) > 0);
+    AssertTrue(Pos('reasoning', Cfg.AsJson) > 0);
     AssertTrue(Pos('opencode/gpt-5-nano', Cfg.AsJson) > 0);
   finally
     Cfg.Free;

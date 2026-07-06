@@ -43,7 +43,7 @@ type
     procedure DeleteProvider(const Id: string);
     procedure UpsertModel(const ProviderId, ModelId, DisplayName: string);
     procedure DeleteModel(const ProviderId, ModelId: string);
-    procedure UpsertAgent(const Id, Description, Mode, Model, Prompt: string; Temperature: Double; Disabled: Boolean);
+    procedure UpsertAgent(const Id, Description, Mode, Model, Prompt: string; Temperature: Double; Disabled: Boolean; const Color: string = ''; MaxSteps: Integer = 0; Hidden: Boolean = False; const Tools: string = '');
     procedure DeleteAgent(const Id: string);
     procedure UpsertMcpLocal(const Id, CommandText: string; Enabled: Boolean);
     procedure UpsertMcpRemote(const Id, Url: string; Enabled: Boolean);
@@ -368,9 +368,11 @@ begin
   end;
 end;
 
-procedure TOpenCodeConfig.UpsertAgent(const Id, Description, Mode, Model, Prompt: string; Temperature: Double; Disabled: Boolean);
+procedure TOpenCodeConfig.UpsertAgent(const Id, Description, Mode, Model, Prompt: string; Temperature: Double; Disabled: Boolean; const Color: string = ''; MaxSteps: Integer = 0; Hidden: Boolean = False; const Tools: string = '');
 var
-  Agents, Agent: TJSONObject;
+  Agents, Agent, ToolsObj: TJSONObject;
+  ToolList: TStringArray;
+  Tool: string;
 begin
   Agents := EnsureObject(FData, 'agent');
   if Agents.Find(Id) is TJSONObject then
@@ -383,11 +385,33 @@ begin
   Agent.Strings['description'] := Description;
   Agent.Strings['mode'] := Mode;
   if Model <> '' then
-    Agent.Strings['model'] := Model;
+    Agent.Strings['model'] := Model
+  else if Assigned(Agent.Find('model')) then
+    Agent.Delete('model');
   if Prompt <> '' then
-    Agent.Strings['prompt'] := Prompt;
+    Agent.Strings['prompt'] := Prompt
+  else if Assigned(Agent.Find('prompt')) then
+    Agent.Delete('prompt');
   Agent.Floats['temperature'] := Temperature;
   Agent.Booleans['disable'] := Disabled;
+  if Color <> '' then
+    Agent.Strings['color'] := Color
+  else if Assigned(Agent.Find('color')) then
+    Agent.Delete('color');
+  if MaxSteps > 0 then
+    Agent.Integers['maxSteps'] := MaxSteps
+  else if Assigned(Agent.Find('maxSteps')) then
+    Agent.Delete('maxSteps');
+  Agent.Booleans['hidden'] := Hidden;
+  if Assigned(Agent.Find('tools')) then
+    Agent.Delete('tools');
+  if Tools <> '' then
+  begin
+    ToolsObj := EnsureObject(Agent, 'tools');
+    ToolList := Tools.Split([','], TStringSplitOptions.ExcludeEmpty);
+    for Tool in ToolList do
+      ToolsObj.Booleans[Trim(Tool)] := True;
+  end;
 end;
 
 procedure TOpenCodeConfig.DeleteAgent(const Id: string);

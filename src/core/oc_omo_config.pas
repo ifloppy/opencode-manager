@@ -24,9 +24,9 @@ type
     function Validate: TValidationIssueArray;
     function AgentIds: TStringList;
     function CategoryIds: TStringList;
-    procedure UpsertAgent(const Id, ModelName, Category, Variant, PromptAppend: string; Temperature: Double; Disabled: Boolean);
+    procedure UpsertAgent(const Id, ModelName, Category, Variant, PromptAppend: string; Temperature: Double; Disabled: Boolean; const Thinking: string = ''; const ReasoningEffort: string = '');
     procedure DeleteAgent(const Id: string);
-    procedure UpsertCategory(const Id, ModelName, Description, Variant, PromptAppend: string; Disabled: Boolean);
+    procedure UpsertCategory(const Id, ModelName, Description, Variant, PromptAppend: string; Disabled: Boolean; const Thinking: string = ''; const ReasoningEffort: string = '');
     procedure DeleteCategory(const Id: string);
     property FileName: string read FFileName;
     property Data: TJSONObject read GetData;
@@ -196,9 +196,9 @@ begin
     Result := ObjectKeys(nil);
 end;
 
-procedure TOMOConfig.UpsertAgent(const Id, ModelName, Category, Variant, PromptAppend: string; Temperature: Double; Disabled: Boolean);
+procedure TOMOConfig.UpsertAgent(const Id, ModelName, Category, Variant, PromptAppend: string; Temperature: Double; Disabled: Boolean; const Thinking: string = ''; const ReasoningEffort: string = '');
 var
-  Agents, Agent: TJSONObject;
+  Agents, Agent, ThinkingObj, ReasoningObj: TJSONObject;
 begin
   Agents := EnsureObject(FData, 'agents');
   if Agents.Find(Id) is TJSONObject then
@@ -218,6 +218,20 @@ begin
     Agent.Strings['prompt_append'] := PromptAppend;
   Agent.Floats['temperature'] := Temperature;
   Agent.Booleans['disable'] := Disabled;
+  if Thinking <> '' then
+  begin
+    ThinkingObj := EnsureObject(Agent, 'thinking');
+    ThinkingObj.Strings['type'] := Thinking;
+  end
+  else if Assigned(Agent.Find('thinking')) then
+    Agent.Delete('thinking');
+  if ReasoningEffort <> '' then
+  begin
+    ReasoningObj := EnsureObject(Agent, 'reasoning');
+    ReasoningObj.Strings['effort'] := ReasoningEffort;
+  end
+  else if Assigned(Agent.Find('reasoning')) then
+    Agent.Delete('reasoning');
 end;
 
 procedure TOMOConfig.DeleteAgent(const Id: string);
@@ -229,9 +243,9 @@ begin
     Agents.Delete(Id);
 end;
 
-procedure TOMOConfig.UpsertCategory(const Id, ModelName, Description, Variant, PromptAppend: string; Disabled: Boolean);
+procedure TOMOConfig.UpsertCategory(const Id, ModelName, Description, Variant, PromptAppend: string; Disabled: Boolean; const Thinking: string = ''; const ReasoningEffort: string = '');
 var
-  Categories, Category: TJSONObject;
+  Categories, Category, ThinkingObj, ReasoningObj: TJSONObject;
 begin
   Categories := EnsureObject(FData, 'categories');
   if Categories.Find(Id) is TJSONObject then
@@ -250,6 +264,20 @@ begin
   if PromptAppend <> '' then
     Category.Strings['prompt_append'] := PromptAppend;
   Category.Booleans['disable'] := Disabled;
+  if Thinking <> '' then
+  begin
+    ThinkingObj := EnsureObject(Category, 'thinking');
+    ThinkingObj.Strings['type'] := Thinking;
+  end
+  else if Assigned(Category.Find('thinking')) then
+    Category.Delete('thinking');
+  if ReasoningEffort <> '' then
+  begin
+    ReasoningObj := EnsureObject(Category, 'reasoning');
+    ReasoningObj.Strings['effort'] := ReasoningEffort;
+  end
+  else if Assigned(Category.Find('reasoning')) then
+    Category.Delete('reasoning');
 end;
 
 procedure TOMOConfig.DeleteCategory(const Id: string);

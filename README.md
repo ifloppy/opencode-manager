@@ -6,9 +6,9 @@
 
 - OpenCode `opencode.json/jsonc` 自动发现、读取、校验和保存。
 - Oh My OpenAgent `oh-my-openagent.json/jsonc` 管理，兼容旧名 `oh-my-opencode.json/jsonc`。
-- Provider 和 Model 管理，参考 OpenCode Config Manager 的 Provider/Model 模式。
-- OpenCode Agent 管理：`description`、`mode`、`model`、`prompt`、`temperature`、`disable`。
-- Oh My OpenAgent Agent 和 Category 管理：`model`、`category`、`variant`、`prompt_append`、`temperature`、`disable`。
+- Provider 和 Model 管理，内置常见 Provider/NPM SDK 下拉预设，并支持模型连通性测试。
+- OpenCode Agent 管理：支持内置 `plan`/`build`、`description`、`mode`、`model`、`prompt`、`temperature`、`disable`、`hidden`、`color`、`maxSteps` 和工具开关。
+- Oh My OpenAgent Agent 和 Category 管理：支持内置 OMO Agent、`model`、`category`、`variant`、`prompt_append`、`temperature`、`disable`、`thinking` 和 `reasoning`。
 - MCP 管理：local command、remote URL、启用/禁用。
 - Plugin 管理：维护 OpenCode `plugin` 数组。
 - Profile 管理：在 `~/.config/opencode-profiles` 下创建、复制和删除隔离配置目录。
@@ -57,6 +57,12 @@ src/
 tests/                  FPCUnit 测试
 scripts/                build/test/clean 脚本
 ```
+
+## 预设
+
+Provider 下拉预设覆盖 `anthropic`、`openai`、`google`、`openrouter`、`github-copilot`、`azure`、`bedrock`、`vertex`、`mistral`、`groq`、`deepseek`、`xai`、`together`、`fireworks`、`perplexity` 和 `ollama`。选择预设会自动填充显示名、NPM SDK 和默认 Base URL，仍可手动覆盖。
+
+内置 OpenCode Agent 与 Studio 行为保持一致：`plan` 和 `build` 默认显示，可编辑或禁用，但不能删除。OMO 内置 Agent 包含 `Sisyphus`、`oracle`、`librarian`、`frontend-ui-ux-engineer`、`document-writer`、`multimodal-looker` 和 `explore`。
 
 ## 配置位置
 

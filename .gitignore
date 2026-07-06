@@ -31,3 +31,6 @@ coverage/
 Thumbs.db
 .idea/
 .vscode/
+
+# External reference checkouts
+.ignore/

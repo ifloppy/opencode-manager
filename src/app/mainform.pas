@@ -7,7 +7,7 @@ interface
 uses
   Classes, SysUtils, fpjson, Forms, Controls, Graphics, Dialogs, StdCtrls,
   ComCtrls, ExtCtrls, Spin, oc_config, oc_omo_config, oc_paths, oc_profiles,
-  oc_json;
+  oc_presets, oc_http;
 
 type
   { TMainForm }
@@ -27,23 +27,32 @@ type
     OMORawMemo: TMemo;
 
     ProviderList, ModelList, AgentList, McpList, PluginList, ProfileList: TListBox;
-    ProviderIdEdit, ProviderNameEdit, ProviderNpmEdit, ProviderBaseUrlEdit, ProviderApiKeyEdit: TEdit;
+    ProviderNameEdit, ProviderBaseUrlEdit, ProviderApiKeyEdit: TEdit;
+    ProviderIdEdit, ProviderNpmEdit: TComboBox;
     ModelIdEdit, ModelNameEdit: TEdit;
-    AgentIdEdit, AgentDescriptionEdit, AgentModeEdit, AgentModelEdit: TEdit;
+    AgentIdEdit, AgentDescriptionEdit, AgentModelEdit, AgentColorEdit: TEdit;
+    AgentModeEdit: TComboBox;
     AgentPromptMemo: TMemo;
     AgentTempEdit: TFloatSpinEdit;
-    AgentDisabledCheck: TCheckBox;
-    McpIdEdit, McpTypeEdit, McpTargetEdit: TEdit;
+    AgentMaxStepsEdit: TSpinEdit;
+    AgentDisabledCheck, AgentHiddenCheck: TCheckBox;
+    AgentToolChecks: array[0..11] of TCheckBox;
+    AgentDeleteButton: TButton;
+    McpIdEdit, McpTargetEdit: TEdit;
+    McpTypeEdit: TComboBox;
     McpEnabledCheck: TCheckBox;
     PluginNameEdit: TEdit;
     ProfileNameEdit: TEdit;
 
     OMOAgentList, OMOCategoryList: TListBox;
-    OMOAgentIdEdit, OMOAgentModelEdit, OMOAgentCategoryEdit, OMOAgentVariantEdit: TEdit;
+    OMOAgentIdEdit, OMOAgentModelEdit: TEdit;
+    OMOAgentCategoryEdit, OMOAgentVariantEdit, OMOAgentThinkingEdit, OMOAgentReasoningEdit: TComboBox;
     OMOAgentPromptMemo: TMemo;
     OMOAgentTempEdit: TFloatSpinEdit;
     OMOAgentDisabledCheck: TCheckBox;
-    OMOCategoryIdEdit, OMOCategoryModelEdit, OMOCategoryDescEdit, OMOCategoryVariantEdit: TEdit;
+    OMOAgentDeleteButton: TButton;
+    OMOCategoryIdEdit, OMOCategoryModelEdit, OMOCategoryDescEdit: TEdit;
+    OMOCategoryVariantEdit, OMOCategoryThinkingEdit, OMOCategoryReasoningEdit: TComboBox;
     OMOCategoryPromptMemo: TMemo;
     OMOCategoryDisabledCheck: TCheckBox;
 
@@ -52,6 +61,8 @@ type
     function AddButton(AParent: TWinControl; const ACaption: string; LeftPos, TopPos, WidthValue: Integer; Handler: TNotifyEvent): TButton;
     function AddLabel(AParent: TWinControl; const ACaption: string; LeftPos, TopPos: Integer): TLabel;
     function AddEdit(AParent: TWinControl; LeftPos, TopPos, WidthValue: Integer): TEdit;
+    function AddCombo(AParent: TWinControl; LeftPos, TopPos, WidthValue: Integer; const Items: array of string): TComboBox;
+    procedure FillCombo(ACombo: TComboBox; const Items: array of string);
     procedure LoadDefaultConfigs;
     procedure RefreshAll;
     procedure RefreshValidation;
@@ -64,6 +75,8 @@ type
     procedure RefreshProfiles;
     procedure RefreshOMOLists;
     function SelectedText(List: TListBox): string;
+    function SelectedTools: string;
+    procedure ApplyToolsToChecks(Agent: TJSONObject);
     function ObjectInSection(Root: TJSONObject; const Section, Id: string): TJSONObject;
 
     procedure OnOpenConfig(Sender: TObject);
@@ -72,11 +85,13 @@ type
     procedure OnValidate(Sender: TObject);
     procedure OnApplyRaw(Sender: TObject);
     procedure OnProviderSelect(Sender: TObject);
+    procedure OnProviderPresetChange(Sender: TObject);
     procedure OnModelSelect(Sender: TObject);
     procedure OnSaveProvider(Sender: TObject);
     procedure OnDeleteProvider(Sender: TObject);
     procedure OnSaveModel(Sender: TObject);
     procedure OnDeleteModel(Sender: TObject);
+    procedure OnTestModelConnectivity(Sender: TObject);
     procedure OnAgentSelect(Sender: TObject);
     procedure OnSaveAgent(Sender: TObject);
     procedure OnDeleteAgent(Sender: TObject);
@@ -157,9 +172,28 @@ begin
   Result.SetBounds(LeftPos, TopPos, WidthValue, 28);
 end;
 
+procedure TMainForm.FillCombo(ACombo: TComboBox; const Items: array of string);
+var
+  I: Integer;
+begin
+  ACombo.Items.Clear;
+  for I := Low(Items) to High(Items) do
+    ACombo.Items.Add(Items[I]);
+end;
+
+function TMainForm.AddCombo(AParent: TWinControl; LeftPos, TopPos, WidthValue: Integer; const Items: array of string): TComboBox;
+begin
+  Result := TComboBox.Create(AParent);
+  Result.Parent := AParent;
+  Result.Style := csDropDown;
+  Result.SetBounds(LeftPos, TopPos, WidthValue, 28);
+  FillCombo(Result, Items);
+end;
+
 procedure TMainForm.BuildUi;
 var
   Tab: TTabSheet;
+  I: Integer;
 begin
   PageControl := TPageControl.Create(Self);
   PageControl.Parent := Self;
@@ -187,49 +221,67 @@ begin
   ValidationMemo.ReadOnly := True;
 
   Tab := AddTab('Provider / Model');
-  ProviderList := TListBox.Create(Tab); ProviderList.Parent := Tab; ProviderList.SetBounds(16, 16, 210, 290); ProviderList.OnClick := @OnProviderSelect;
-  AddLabel(Tab, 'Provider ID', 250, 20); ProviderIdEdit := AddEdit(Tab, 370, 16, 260);
-  AddLabel(Tab, '显示名', 250, 58); ProviderNameEdit := AddEdit(Tab, 370, 54, 260);
-  AddLabel(Tab, 'NPM SDK', 250, 96); ProviderNpmEdit := AddEdit(Tab, 370, 92, 260);
-  AddLabel(Tab, 'Base URL', 250, 134); ProviderBaseUrlEdit := AddEdit(Tab, 370, 130, 420);
-  AddLabel(Tab, 'API Key/env', 250, 172); ProviderApiKeyEdit := AddEdit(Tab, 370, 168, 420);
+  ProviderList := TListBox.Create(Tab); ProviderList.Parent := Tab; ProviderList.SetBounds(16, 16, 210, 285); ProviderList.Anchors := [akLeft, akTop, akBottom]; ProviderList.OnClick := @OnProviderSelect;
+  AddLabel(Tab, 'Provider ID', 250, 20); ProviderIdEdit := AddCombo(Tab, 370, 16, 260, []); ProviderIdEdit.OnChange := @OnProviderPresetChange;
+  for I := Low(PROVIDER_PRESETS) to High(PROVIDER_PRESETS) do
+    ProviderIdEdit.Items.Add(PROVIDER_PRESETS[I].Id);
+  AddLabel(Tab, '显示名', 250, 58); ProviderNameEdit := AddEdit(Tab, 370, 54, 420); ProviderNameEdit.Anchors := [akLeft, akTop, akRight];
+  AddLabel(Tab, 'NPM SDK', 250, 96); ProviderNpmEdit := AddCombo(Tab, 370, 92, 420, NPM_SDK_PRESETS); ProviderNpmEdit.Anchors := [akLeft, akTop, akRight];
+  AddLabel(Tab, 'Base URL', 250, 134); ProviderBaseUrlEdit := AddEdit(Tab, 370, 130, 520); ProviderBaseUrlEdit.Anchors := [akLeft, akTop, akRight];
+  AddLabel(Tab, 'API Key', 250, 172); ProviderApiKeyEdit := AddEdit(Tab, 370, 168, 520); ProviderApiKeyEdit.Anchors := [akLeft, akTop, akRight];
   AddButton(Tab, '保存 Provider', 370, 210, 130, @OnSaveProvider);
   AddButton(Tab, '删除 Provider', 510, 210, 130, @OnDeleteProvider);
-  ModelList := TListBox.Create(Tab); ModelList.Parent := Tab; ModelList.SetBounds(16, 330, 210, 290); ModelList.OnClick := @OnModelSelect;
-  AddLabel(Tab, 'Model ID', 250, 334); ModelIdEdit := AddEdit(Tab, 370, 330, 360);
-  AddLabel(Tab, '模型显示名', 250, 372); ModelNameEdit := AddEdit(Tab, 370, 368, 360);
-  AddButton(Tab, '保存 Model', 370, 410, 130, @OnSaveModel);
-  AddButton(Tab, '删除 Model', 510, 410, 130, @OnDeleteModel);
+  ModelList := TListBox.Create(Tab); ModelList.Parent := Tab; ModelList.SetBounds(16, 320, 210, 300); ModelList.Anchors := [akLeft, akBottom]; ModelList.OnClick := @OnModelSelect;
+  AddLabel(Tab, 'Model ID', 250, 320); ModelIdEdit := AddEdit(Tab, 370, 316, 420); ModelIdEdit.Anchors := [akLeft, akBottom, akRight];
+  AddLabel(Tab, '模型显示名', 250, 358); ModelNameEdit := AddEdit(Tab, 370, 354, 420); ModelNameEdit.Anchors := [akLeft, akBottom, akRight];
+  AddButton(Tab, '保存 Model', 370, 396, 130, @OnSaveModel);
+  AddButton(Tab, '删除 Model', 510, 396, 130, @OnDeleteModel);
+  AddButton(Tab, '测试连通性', 650, 396, 130, @OnTestModelConnectivity);
 
   Tab := AddTab('OpenCode Agent');
   AgentList := TListBox.Create(Tab); AgentList.Parent := Tab; AgentList.SetBounds(16, 16, 220, 610); AgentList.Anchors := [akLeft, akTop, akBottom]; AgentList.OnClick := @OnAgentSelect;
   AddLabel(Tab, 'Agent ID', 260, 20); AgentIdEdit := AddEdit(Tab, 380, 16, 260);
   AddLabel(Tab, '描述', 260, 58); AgentDescriptionEdit := AddEdit(Tab, 380, 54, 520);
-  AddLabel(Tab, '模式', 260, 96); AgentModeEdit := AddEdit(Tab, 380, 92, 160); AgentModeEdit.Text := 'subagent';
+  AddLabel(Tab, '模式', 260, 96); AgentModeEdit := AddCombo(Tab, 380, 92, 160, AGENT_MODES); AgentModeEdit.Text := 'subagent';
   AddLabel(Tab, '模型', 260, 134); AgentModelEdit := AddEdit(Tab, 380, 130, 360);
   AddLabel(Tab, '温度', 260, 172); AgentTempEdit := TFloatSpinEdit.Create(Tab); AgentTempEdit.Parent := Tab; AgentTempEdit.SetBounds(380, 168, 100, 28); AgentTempEdit.Increment := 0.1; AgentTempEdit.DecimalPlaces := 2; AgentTempEdit.MinValue := 0; AgentTempEdit.MaxValue := 2;
   AgentDisabledCheck := TCheckBox.Create(Tab); AgentDisabledCheck.Parent := Tab; AgentDisabledCheck.Caption := '禁用'; AgentDisabledCheck.SetBounds(500, 170, 80, 24);
-  AddLabel(Tab, 'Prompt', 260, 210); AgentPromptMemo := TMemo.Create(Tab); AgentPromptMemo.Parent := Tab; AgentPromptMemo.SetBounds(380, 210, 620, 300); AgentPromptMemo.ScrollBars := ssAutoBoth; AgentPromptMemo.Anchors := [akLeft, akTop, akRight, akBottom];
+  AgentHiddenCheck := TCheckBox.Create(Tab); AgentHiddenCheck.Parent := Tab; AgentHiddenCheck.Caption := '隐藏'; AgentHiddenCheck.SetBounds(580, 170, 80, 24);
+  AddLabel(Tab, '颜色', 610, 172); AgentColorEdit := AddEdit(Tab, 660, 168, 90);
+  AddLabel(Tab, 'MaxSteps', 760, 172); AgentMaxStepsEdit := TSpinEdit.Create(Tab); AgentMaxStepsEdit.Parent := Tab; AgentMaxStepsEdit.SetBounds(840, 168, 80, 28); AgentMaxStepsEdit.MinValue := 0; AgentMaxStepsEdit.MaxValue := 1000;
+  AddLabel(Tab, '工具', 260, 210);
+  for I := Low(AGENT_TOOLS) to High(AGENT_TOOLS) do
+  begin
+    AgentToolChecks[I] := TCheckBox.Create(Tab);
+    AgentToolChecks[I].Parent := Tab;
+    AgentToolChecks[I].Caption := AGENT_TOOLS[I];
+    AgentToolChecks[I].SetBounds(380 + (I mod 4) * 120, 210 + (I div 4) * 26, 115, 24);
+  end;
+  AddLabel(Tab, 'Prompt', 260, 300); AgentPromptMemo := TMemo.Create(Tab); AgentPromptMemo.Parent := Tab; AgentPromptMemo.SetBounds(380, 300, 620, 210); AgentPromptMemo.ScrollBars := ssAutoBoth; AgentPromptMemo.Anchors := [akLeft, akTop, akRight, akBottom];
   AddButton(Tab, '保存 Agent', 380, 530, 130, @OnSaveAgent);
-  AddButton(Tab, '删除 Agent', 520, 530, 130, @OnDeleteAgent);
+  AgentDeleteButton := AddButton(Tab, '删除 Agent', 520, 530, 130, @OnDeleteAgent);
 
   Tab := AddTab('OMO Agents / Categories');
   OMOAgentList := TListBox.Create(Tab); OMOAgentList.Parent := Tab; OMOAgentList.SetBounds(16, 16, 210, 280); OMOAgentList.OnClick := @OnOMOAgentSelect;
   AddLabel(Tab, 'Agent ID', 245, 20); OMOAgentIdEdit := AddEdit(Tab, 365, 16, 220);
   AddLabel(Tab, '模型', 245, 58); OMOAgentModelEdit := AddEdit(Tab, 365, 54, 300);
-  AddLabel(Tab, 'Category', 245, 96); OMOAgentCategoryEdit := AddEdit(Tab, 365, 92, 220);
-  AddLabel(Tab, 'Variant', 245, 134); OMOAgentVariantEdit := AddEdit(Tab, 365, 130, 120);
+  AddLabel(Tab, 'Category', 245, 96); OMOAgentCategoryEdit := AddCombo(Tab, 365, 92, 220, OMO_CATEGORY_PRESETS);
+  AddLabel(Tab, 'Variant', 245, 134); OMOAgentVariantEdit := AddCombo(Tab, 365, 130, 120, OMO_VARIANT_PRESETS);
   AddLabel(Tab, '温度', 245, 172); OMOAgentTempEdit := TFloatSpinEdit.Create(Tab); OMOAgentTempEdit.Parent := Tab; OMOAgentTempEdit.SetBounds(365, 168, 100, 28); OMOAgentTempEdit.Increment := 0.1; OMOAgentTempEdit.DecimalPlaces := 2; OMOAgentTempEdit.MaxValue := 2;
   OMOAgentDisabledCheck := TCheckBox.Create(Tab); OMOAgentDisabledCheck.Parent := Tab; OMOAgentDisabledCheck.Caption := '禁用'; OMOAgentDisabledCheck.SetBounds(490, 170, 80, 24);
+  AddLabel(Tab, 'Thinking', 245, 210); OMOAgentThinkingEdit := AddCombo(Tab, 365, 206, 120, OMO_THINKING_OPTIONS);
+  AddLabel(Tab, 'Reasoning', 500, 210); OMOAgentReasoningEdit := AddCombo(Tab, 590, 206, 120, OMO_REASONING_EFFORTS);
   OMOAgentPromptMemo := TMemo.Create(Tab); OMOAgentPromptMemo.Parent := Tab; OMOAgentPromptMemo.SetBounds(680, 16, 390, 180); OMOAgentPromptMemo.ScrollBars := ssAutoBoth; OMOAgentPromptMemo.Anchors := [akLeft, akTop, akRight];
-  AddButton(Tab, '保存 OMO Agent', 365, 215, 150, @OnSaveOMOAgent);
-  AddButton(Tab, '删除 OMO Agent', 525, 215, 150, @OnDeleteOMOAgent);
+  AddButton(Tab, '保存 OMO Agent', 365, 245, 150, @OnSaveOMOAgent);
+  OMOAgentDeleteButton := AddButton(Tab, '删除 OMO Agent', 525, 245, 150, @OnDeleteOMOAgent);
   OMOCategoryList := TListBox.Create(Tab); OMOCategoryList.Parent := Tab; OMOCategoryList.SetBounds(16, 330, 210, 280); OMOCategoryList.OnClick := @OnOMOCategorySelect;
   AddLabel(Tab, 'Category ID', 245, 334); OMOCategoryIdEdit := AddEdit(Tab, 365, 330, 220);
   AddLabel(Tab, '模型', 245, 372); OMOCategoryModelEdit := AddEdit(Tab, 365, 368, 300);
   AddLabel(Tab, '描述', 245, 410); OMOCategoryDescEdit := AddEdit(Tab, 365, 406, 300);
-  AddLabel(Tab, 'Variant', 245, 448); OMOCategoryVariantEdit := AddEdit(Tab, 365, 444, 120);
+  AddLabel(Tab, 'Variant', 245, 448); OMOCategoryVariantEdit := AddCombo(Tab, 365, 444, 120, OMO_VARIANT_PRESETS);
   OMOCategoryDisabledCheck := TCheckBox.Create(Tab); OMOCategoryDisabledCheck.Parent := Tab; OMOCategoryDisabledCheck.Caption := '禁用'; OMOCategoryDisabledCheck.SetBounds(500, 446, 80, 24);
+  AddLabel(Tab, 'Thinking', 245, 486); OMOCategoryThinkingEdit := AddCombo(Tab, 365, 482, 120, OMO_THINKING_OPTIONS);
+  AddLabel(Tab, 'Reasoning', 500, 486); OMOCategoryReasoningEdit := AddCombo(Tab, 590, 482, 120, OMO_REASONING_EFFORTS);
   OMOCategoryPromptMemo := TMemo.Create(Tab); OMOCategoryPromptMemo.Parent := Tab; OMOCategoryPromptMemo.SetBounds(680, 330, 390, 180); OMOCategoryPromptMemo.ScrollBars := ssAutoBoth; OMOCategoryPromptMemo.Anchors := [akLeft, akTop, akRight];
   AddButton(Tab, '保存 Category', 365, 530, 150, @OnSaveOMOCategory);
   AddButton(Tab, '删除 Category', 525, 530, 150, @OnDeleteOMOCategory);
@@ -237,7 +289,7 @@ begin
   Tab := AddTab('MCP / Plugin');
   McpList := TListBox.Create(Tab); McpList.Parent := Tab; McpList.SetBounds(16, 16, 220, 300); McpList.OnClick := @OnMcpSelect;
   AddLabel(Tab, 'MCP ID', 260, 20); McpIdEdit := AddEdit(Tab, 380, 16, 260);
-  AddLabel(Tab, '类型 local/remote', 260, 58); McpTypeEdit := AddEdit(Tab, 380, 54, 160); McpTypeEdit.Text := 'local';
+  AddLabel(Tab, '类型', 260, 58); McpTypeEdit := AddCombo(Tab, 380, 54, 160, MCP_TYPES); McpTypeEdit.Text := 'local';
   AddLabel(Tab, '命令或 URL', 260, 96); McpTargetEdit := AddEdit(Tab, 380, 92, 520);
   McpEnabledCheck := TCheckBox.Create(Tab); McpEnabledCheck.Parent := Tab; McpEnabledCheck.Caption := '启用'; McpEnabledCheck.Checked := True; McpEnabledCheck.SetBounds(380, 130, 80, 24);
   AddButton(Tab, '保存 MCP', 380, 170, 130, @OnSaveMcp);
@@ -319,6 +371,35 @@ begin
     Result := '';
 end;
 
+function TMainForm.SelectedTools: string;
+var
+  I: Integer;
+begin
+  Result := '';
+  for I := Low(AgentToolChecks) to High(AgentToolChecks) do
+    if AgentToolChecks[I].Checked then
+    begin
+      if Result <> '' then
+        Result := Result + ',';
+      Result := Result + AGENT_TOOLS[I];
+    end;
+end;
+
+procedure TMainForm.ApplyToolsToChecks(Agent: TJSONObject);
+var
+  I: Integer;
+  Tools: TJSONData;
+begin
+  for I := Low(AgentToolChecks) to High(AgentToolChecks) do
+    AgentToolChecks[I].Checked := False;
+  if not Assigned(Agent) then
+    Exit;
+  Tools := Agent.Find('tools');
+  if Tools is TJSONObject then
+    for I := Low(AgentToolChecks) to High(AgentToolChecks) do
+      AgentToolChecks[I].Checked := TJSONObject(Tools).Get(AGENT_TOOLS[I], False);
+end;
+
 function TMainForm.ObjectInSection(Root: TJSONObject; const Section, Id: string): TJSONObject;
 var
   Sec, Item: TJSONData;
@@ -349,9 +430,13 @@ end;
 procedure TMainForm.RefreshAgentList;
 var
   L: TStringList;
+  I: Integer;
 begin
   L := FConfig.AgentIds;
   try
+    for I := Low(BUILTIN_AGENTS) to High(BUILTIN_AGENTS) do
+      if L.IndexOf(BUILTIN_AGENTS[I]) < 0 then
+        L.Add(BUILTIN_AGENTS[I]);
     AgentList.Items.Assign(L);
   finally
     L.Free;
@@ -397,9 +482,13 @@ end;
 procedure TMainForm.RefreshOMOLists;
 var
   L: TStringList;
+  I: Integer;
 begin
   L := FOMO.AgentIds;
   try
+    for I := Low(OMO_BUILTIN_AGENTS) to High(OMO_BUILTIN_AGENTS) do
+      if L.IndexOf(OMO_BUILTIN_AGENTS[I]) < 0 then
+        L.Add(OMO_BUILTIN_AGENTS[I]);
     OMOAgentList.Items.Assign(L);
   finally
     L.Free;
@@ -484,6 +573,18 @@ begin
   end;
 end;
 
+procedure TMainForm.OnProviderPresetChange(Sender: TObject);
+var
+  Index: Integer;
+begin
+  Index := FindProviderPreset(ProviderIdEdit.Text);
+  if Index < 0 then
+    Exit;
+  ProviderNameEdit.Text := PROVIDER_PRESETS[Index].Name;
+  ProviderNpmEdit.Text := PROVIDER_PRESETS[Index].Npm;
+  ProviderBaseUrlEdit.Text := PROVIDER_PRESETS[Index].BaseURL;
+end;
+
 procedure TMainForm.OnModelSelect(Sender: TObject);
 var
   Provider, Models, ModelObj: TJSONObject;
@@ -526,11 +627,39 @@ begin
   RefreshAll;
 end;
 
+procedure TMainForm.OnTestModelConnectivity(Sender: TObject);
+var
+  R: TConnectivityResult;
+begin
+  R := TestModelConnectivity(ProviderIdEdit.Text, ProviderBaseUrlEdit.Text, ProviderApiKeyEdit.Text, ModelIdEdit.Text);
+  if R.Success then
+  begin
+    Status.SimpleText := '模型连通性测试成功: HTTP ' + IntToStr(R.StatusCode) + ', ' + IntToStr(R.ResponseTimeMs) + 'ms';
+    ShowMessage(Status.SimpleText);
+  end
+  else
+  begin
+    Status.SimpleText := '模型连通性测试失败: ' + R.ErrorMessage;
+    ShowMessage(Status.SimpleText);
+  end;
+end;
+
 procedure TMainForm.OnAgentSelect(Sender: TObject);
 var
   Agent: TJSONObject;
 begin
   AgentIdEdit.Text := SelectedText(AgentList);
+  AgentDescriptionEdit.Text := '';
+  AgentModeEdit.Text := 'primary';
+  AgentModelEdit.Text := '';
+  AgentPromptMemo.Text := '';
+  AgentTempEdit.Value := 0.0;
+  AgentDisabledCheck.Checked := False;
+  AgentHiddenCheck.Checked := False;
+  AgentColorEdit.Text := '';
+  AgentMaxStepsEdit.Value := 0;
+  ApplyToolsToChecks(nil);
+  AgentDeleteButton.Enabled := not IsBuiltinAgent(AgentIdEdit.Text);
   Agent := ObjectInSection(FConfig.Data, 'agent', AgentIdEdit.Text);
   if Assigned(Agent) then
   begin
@@ -540,17 +669,27 @@ begin
     AgentPromptMemo.Text := Agent.Get('prompt', '');
     AgentTempEdit.Value := Agent.Get('temperature', 0.0);
     AgentDisabledCheck.Checked := Agent.Get('disable', False);
+    AgentHiddenCheck.Checked := Agent.Get('hidden', False);
+    AgentColorEdit.Text := Agent.Get('color', '');
+    AgentMaxStepsEdit.Value := Agent.Get('maxSteps', 0);
+    ApplyToolsToChecks(Agent);
   end;
 end;
 
 procedure TMainForm.OnSaveAgent(Sender: TObject);
 begin
-  FConfig.UpsertAgent(AgentIdEdit.Text, AgentDescriptionEdit.Text, AgentModeEdit.Text, AgentModelEdit.Text, AgentPromptMemo.Text, AgentTempEdit.Value, AgentDisabledCheck.Checked);
+  FConfig.UpsertAgent(AgentIdEdit.Text, AgentDescriptionEdit.Text, AgentModeEdit.Text, AgentModelEdit.Text, AgentPromptMemo.Text,
+    AgentTempEdit.Value, AgentDisabledCheck.Checked, AgentColorEdit.Text, AgentMaxStepsEdit.Value, AgentHiddenCheck.Checked, SelectedTools);
   RefreshAll;
 end;
 
 procedure TMainForm.OnDeleteAgent(Sender: TObject);
 begin
+  if IsBuiltinAgent(AgentIdEdit.Text) then
+  begin
+    ShowMessage('内置 Agent 不能删除，只能编辑或禁用。');
+    Exit;
+  end;
   FConfig.DeleteAgent(AgentIdEdit.Text);
   RefreshAll;
 end;
@@ -629,8 +768,18 @@ end;
 procedure TMainForm.OnOMOAgentSelect(Sender: TObject);
 var
   Agent: TJSONObject;
+  Node: TJSONData;
 begin
   OMOAgentIdEdit.Text := SelectedText(OMOAgentList);
+  OMOAgentModelEdit.Text := '';
+  OMOAgentCategoryEdit.Text := '';
+  OMOAgentVariantEdit.Text := '';
+  OMOAgentPromptMemo.Text := '';
+  OMOAgentTempEdit.Value := 0.0;
+  OMOAgentDisabledCheck.Checked := False;
+  OMOAgentThinkingEdit.Text := '';
+  OMOAgentReasoningEdit.Text := '';
+  OMOAgentDeleteButton.Enabled := not IsBuiltinOMOAgent(OMOAgentIdEdit.Text);
   Agent := ObjectInSection(FOMO.Data, 'agents', OMOAgentIdEdit.Text);
   if Assigned(Agent) then
   begin
@@ -640,17 +789,29 @@ begin
     OMOAgentPromptMemo.Text := Agent.Get('prompt_append', '');
     OMOAgentTempEdit.Value := Agent.Get('temperature', 0.0);
     OMOAgentDisabledCheck.Checked := Agent.Get('disable', False);
+    Node := Agent.Find('thinking');
+    if Node is TJSONObject then
+      OMOAgentThinkingEdit.Text := TJSONObject(Node).Get('type', '');
+    Node := Agent.Find('reasoning');
+    if Node is TJSONObject then
+      OMOAgentReasoningEdit.Text := TJSONObject(Node).Get('effort', '');
   end;
 end;
 
 procedure TMainForm.OnSaveOMOAgent(Sender: TObject);
 begin
-  FOMO.UpsertAgent(OMOAgentIdEdit.Text, OMOAgentModelEdit.Text, OMOAgentCategoryEdit.Text, OMOAgentVariantEdit.Text, OMOAgentPromptMemo.Text, OMOAgentTempEdit.Value, OMOAgentDisabledCheck.Checked);
+  FOMO.UpsertAgent(OMOAgentIdEdit.Text, OMOAgentModelEdit.Text, OMOAgentCategoryEdit.Text, OMOAgentVariantEdit.Text,
+    OMOAgentPromptMemo.Text, OMOAgentTempEdit.Value, OMOAgentDisabledCheck.Checked, OMOAgentThinkingEdit.Text, OMOAgentReasoningEdit.Text);
   RefreshAll;
 end;
 
 procedure TMainForm.OnDeleteOMOAgent(Sender: TObject);
 begin
+  if IsBuiltinOMOAgent(OMOAgentIdEdit.Text) then
+  begin
+    ShowMessage('内置 OMO Agent 不能删除，只能编辑或禁用。');
+    Exit;
+  end;
   FOMO.DeleteAgent(OMOAgentIdEdit.Text);
   RefreshAll;
 end;
@@ -658,8 +819,16 @@ end;
 procedure TMainForm.OnOMOCategorySelect(Sender: TObject);
 var
   Category: TJSONObject;
+  Node: TJSONData;
 begin
   OMOCategoryIdEdit.Text := SelectedText(OMOCategoryList);
+  OMOCategoryModelEdit.Text := '';
+  OMOCategoryDescEdit.Text := '';
+  OMOCategoryVariantEdit.Text := '';
+  OMOCategoryPromptMemo.Text := '';
+  OMOCategoryDisabledCheck.Checked := False;
+  OMOCategoryThinkingEdit.Text := '';
+  OMOCategoryReasoningEdit.Text := '';
   Category := ObjectInSection(FOMO.Data, 'categories', OMOCategoryIdEdit.Text);
   if Assigned(Category) then
   begin
@@ -668,12 +837,19 @@ begin
     OMOCategoryVariantEdit.Text := Category.Get('variant', '');
     OMOCategoryPromptMemo.Text := Category.Get('prompt_append', '');
     OMOCategoryDisabledCheck.Checked := Category.Get('disable', False);
+    Node := Category.Find('thinking');
+    if Node is TJSONObject then
+      OMOCategoryThinkingEdit.Text := TJSONObject(Node).Get('type', '');
+    Node := Category.Find('reasoning');
+    if Node is TJSONObject then
+      OMOCategoryReasoningEdit.Text := TJSONObject(Node).Get('effort', '');
   end;
 end;
 
 procedure TMainForm.OnSaveOMOCategory(Sender: TObject);
 begin
-  FOMO.UpsertCategory(OMOCategoryIdEdit.Text, OMOCategoryModelEdit.Text, OMOCategoryDescEdit.Text, OMOCategoryVariantEdit.Text, OMOCategoryPromptMemo.Text, OMOCategoryDisabledCheck.Checked);
+  FOMO.UpsertCategory(OMOCategoryIdEdit.Text, OMOCategoryModelEdit.Text, OMOCategoryDescEdit.Text, OMOCategoryVariantEdit.Text,
+    OMOCategoryPromptMemo.Text, OMOCategoryDisabledCheck.Checked, OMOCategoryThinkingEdit.Text, OMOCategoryReasoningEdit.Text);
   RefreshAll;
 end;
 

@@ -8,6 +8,8 @@ uses
   {$ENDIF}
   Interfaces, Forms, mainform;
 
+{$R *.res}
+
 begin
   RequireDerivedFormResource := False;
   Application.Scaled := True;

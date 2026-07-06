@@ -13,6 +13,13 @@
       <Scaled Value="True"/>
       <ResourceType Value="res"/>
       <UseXPManifest Value="True"/>
+      <XPManifest>
+        <DpiAware Value="True/PM_V2"/>
+        <ExecutionLevel Value="asInvoker"/>
+        <LongPathAware Value="True"/>
+        <TextName Value="OpenCode.Manager"/>
+        <TextDesc Value="OpenCode configuration manager"/>
+      </XPManifest>
       <Icon Value="0"/>
     </General>
     <BuildModes Count="1">

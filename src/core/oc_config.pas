@@ -41,7 +41,11 @@ type
 
     procedure UpsertProvider(const Id, DisplayName, NpmPackage, BaseURL, ApiKey: string);
     procedure DeleteProvider(const Id: string);
-    procedure UpsertModel(const ProviderId, ModelId, DisplayName: string);
+    procedure UpsertModel(const ProviderId, ModelId, DisplayName: string); overload;
+    procedure UpsertModel(const ProviderId, ModelId, DisplayName, Family, Status: string;
+      ContextLimit, InputLimit, OutputLimit: Integer; Reasoning, Attachment,
+      Temperature, ToolCall: Boolean; const Interleaved, InputModalities,
+      OutputModalities: string); overload;
     procedure DeleteModel(const ProviderId, ModelId: string);
     procedure UpsertAgent(const Id, Description, Mode, Model, Prompt: string; Temperature: Double; Disabled: Boolean; const Color: string = ''; MaxSteps: Integer = 0; Hidden: Boolean = False; const Tools: string = '');
     procedure DeleteAgent(const Id: string);
@@ -82,6 +86,32 @@ begin
   SetLength(Issues, N + 1);
   Issues[N].Severity := Severity;
   Issues[N].Message := Message;
+end;
+
+procedure AddStringArray(Obj: TJSONObject; const Name, Csv, DefaultValue: string);
+var
+  Arr: TJSONArray;
+  Parts: TStringArray;
+  Item: string;
+begin
+  if Assigned(Obj.Find(Name)) then
+    Obj.Delete(Name);
+  Arr := TJSONArray.Create;
+  Parts := Csv.Split(',');
+  for Item in Parts do
+    if Trim(Item) <> '' then
+      Arr.Add(Trim(Item));
+  if Arr.Count = 0 then
+    Arr.Add(DefaultValue);
+  Obj.Add(Name, Arr);
+end;
+
+procedure SetOrDeleteString(Obj: TJSONObject; const Name, Value: string);
+begin
+  if Value <> '' then
+    Obj.Strings[Name] := Value
+  else if Assigned(Obj.Find(Name)) then
+    Obj.Delete(Name);
 end;
 
 function ObjectKeys(Obj: TJSONObject): TStringList;
@@ -311,14 +341,11 @@ begin
     Provider := TJSONObject.Create;
     Providers.Add(Id, Provider);
   end;
-  Provider.Strings['name'] := DisplayName;
-  if NpmPackage <> '' then
-    Provider.Strings['npm'] := NpmPackage;
+  SetOrDeleteString(Provider, 'name', DisplayName);
+  SetOrDeleteString(Provider, 'npm', NpmPackage);
   Options := EnsureObject(Provider, 'options');
-  if BaseURL <> '' then
-    Options.Strings['baseURL'] := BaseURL;
-  if ApiKey <> '' then
-    Options.Strings['apiKey'] := ApiKey;
+  SetOrDeleteString(Options, 'baseURL', BaseURL);
+  SetOrDeleteString(Options, 'apiKey', ApiKey);
   EnsureObject(Provider, 'models');
 end;
 
@@ -351,8 +378,70 @@ begin
     ModelObj := TJSONObject.Create;
     Models.Add(ModelId, ModelObj);
   end;
-  if DisplayName <> '' then
-    ModelObj.Strings['name'] := DisplayName;
+  SetOrDeleteString(ModelObj, 'name', DisplayName);
+end;
+
+procedure TOpenCodeConfig.UpsertModel(const ProviderId, ModelId, DisplayName, Family, Status: string;
+  ContextLimit, InputLimit, OutputLimit: Integer; Reasoning, Attachment,
+  Temperature, ToolCall: Boolean; const Interleaved, InputModalities,
+  OutputModalities: string);
+var
+  Providers, Provider, Models, ModelObj, LimitObj, ModalitiesObj: TJSONObject;
+begin
+  Providers := EnsureObject(FData, 'provider');
+  if Providers.Find(ProviderId) is TJSONObject then
+    Provider := TJSONObject(Providers.Find(ProviderId))
+  else
+  begin
+    Provider := TJSONObject.Create;
+    Providers.Add(ProviderId, Provider);
+  end;
+  Models := EnsureObject(Provider, 'models');
+  if Models.Find(ModelId) is TJSONObject then
+    ModelObj := TJSONObject(Models.Find(ModelId))
+  else
+  begin
+    ModelObj := TJSONObject.Create;
+    Models.Add(ModelId, ModelObj);
+  end;
+
+  SetOrDeleteString(ModelObj, 'name', DisplayName);
+  SetOrDeleteString(ModelObj, 'family', Family);
+  SetOrDeleteString(ModelObj, 'status', Status);
+
+  if ContextLimit <= 0 then
+    ContextLimit := 200000;
+  if OutputLimit <= 0 then
+    OutputLimit := 16000;
+  LimitObj := EnsureObject(ModelObj, 'limit');
+  LimitObj.Floats['context'] := ContextLimit;
+  LimitObj.Floats['output'] := OutputLimit;
+  if InputLimit > 0 then
+    LimitObj.Floats['input'] := InputLimit
+  else if Assigned(LimitObj.Find('input')) then
+    LimitObj.Delete('input');
+
+  ModelObj.Booleans['reasoning'] := Reasoning;
+  ModelObj.Booleans['attachment'] := Attachment;
+  ModelObj.Booleans['temperature'] := Temperature;
+  ModelObj.Booleans['tool_call'] := ToolCall;
+  if Interleaved = '' then
+  begin
+    if Assigned(ModelObj.Find('interleaved')) then
+      ModelObj.Delete('interleaved');
+  end
+  else if Interleaved = 'true' then
+    ModelObj.Booleans['interleaved'] := True
+  else
+  begin
+    if Assigned(ModelObj.Find('interleaved')) then
+      ModelObj.Delete('interleaved');
+    ModelObj.Add('interleaved', TJSONObject.Create(['field', Interleaved]));
+  end;
+
+  ModalitiesObj := EnsureObject(ModelObj, 'modalities');
+  AddStringArray(ModalitiesObj, 'input', InputModalities, 'text');
+  AddStringArray(ModalitiesObj, 'output', OutputModalities, 'text');
 end;
 
 procedure TOpenCodeConfig.DeleteModel(const ProviderId, ModelId: string);

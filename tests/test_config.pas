@@ -12,6 +12,7 @@ type
   published
     procedure EmptyConfigListsAreSafe;
     procedure UpsertsProviderModelAgentMcpAndPlugin;
+    procedure UpsertsDetailedModelCapabilities;
     procedure UpsertsSseMcp;
     procedure ValidatesInvalidAgentMode;
     procedure UpsertsOpenAgentAgentAndCategory;
@@ -38,6 +39,31 @@ begin
     finally
       L.Free;
     end;
+  finally
+    Cfg.Free;
+  end;
+end;
+
+procedure TConfigTests.UpsertsDetailedModelCapabilities;
+var
+  Cfg: TOpenCodeConfig;
+  Provider, Models, ModelObj, LimitObj, ModalitiesObj: TJSONObject;
+begin
+  Cfg := TOpenCodeConfig.Create;
+  try
+    Cfg.UpsertModel('openai', 'gpt-test', 'GPT Test', 'gpt', 'active', 200000, 0, 16000,
+      True, True, True, True, 'reasoning_content', 'text,image', 'text');
+    Provider := TJSONObject(TJSONObject(Cfg.Data.Find('provider')).Find('openai'));
+    Models := TJSONObject(Provider.Find('models'));
+    ModelObj := TJSONObject(Models.Find('gpt-test'));
+    LimitObj := TJSONObject(ModelObj.Find('limit'));
+    ModalitiesObj := TJSONObject(ModelObj.Find('modalities'));
+    AssertEquals(200000, Round(LimitObj.Floats['context']));
+    AssertEquals(16000, Round(LimitObj.Floats['output']));
+    AssertEquals('image', TJSONArray(ModalitiesObj.Find('input')).Strings[1]);
+    AssertTrue(ModelObj.Get('reasoning', False));
+    AssertTrue(ModelObj.Get('attachment', False));
+    AssertEquals('reasoning_content', TJSONObject(ModelObj.Find('interleaved')).Get('field', ''));
   finally
     Cfg.Free;
   end;

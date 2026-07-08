@@ -4,7 +4,7 @@ program test_runner;
 
 uses
   Classes, SysUtils, consoletestrunner, test_json, test_config, test_paths, test_profiles, test_presets,
-  test_sessions;
+  test_sessions, test_http;
 
 type
   TOpenCodeManagerTestRunner = class(TTestRunner)

@@ -18,6 +18,7 @@ type
     FOMO: TOMOConfig;
     FProfiles: TProfileManager;
     FModelListKeys: TStringList;
+    FFetchedModels: TProviderModelInfoArray;
     FSessionSummary: TSessionUsageSummary;
     NavPanel: TPanel;
     LanguageLabel: TLabel;
@@ -40,11 +41,18 @@ type
     ProviderList, ModelList, AgentList, McpList, PluginList, ProfileList: TListBox;
     ProviderNameEdit, ProviderBaseUrlEdit, ProviderApiKeyEdit: TEdit;
     ProviderIdEdit, ProviderNpmEdit: TComboBox;
-    ModelIdEdit, ModelNameEdit: TEdit;
+    ModelIdEdit, ModelNameEdit, ModelFamilyEdit: TEdit;
+    ModelContextLimitEdit, ModelInputLimitEdit, ModelOutputLimitEdit: TSpinEdit;
+    ModelStatusEdit, ModelInterleavedEdit: TComboBox;
+    ModelReasoningCheck, ModelAttachmentCheck, ModelTemperatureCheck, ModelToolCallCheck: TCheckBox;
+    ModelInputModalityChecks: array[0..4] of TCheckBox;
+    ModelOutputModalityChecks: array[0..4] of TCheckBox;
+    ModelFetchList: TListView;
     ProviderIdLabel, ProviderNameLabel, ProviderNpmLabel, ProviderBaseUrlLabel, ProviderApiKeyLabel: TLabel;
-    ModelIdLabel, ModelNameLabel: TLabel;
+    ModelIdLabel, ModelNameLabel, ModelFamilyLabel, ModelStatusLabel, ModelContextLimitLabel: TLabel;
+    ModelInputLimitLabel, ModelOutputLimitLabel, ModelInterleavedLabel, ModelInputModalitiesLabel, ModelOutputModalitiesLabel: TLabel;
     ProviderSaveButton, ProviderDeleteButton: TButton;
-    ModelSaveButton, ModelDeleteButton, ModelTestButton: TButton;
+    ModelSaveButton, ModelDeleteButton, ModelTestButton, ModelFetchButton, ModelAddFetchedButton: TButton;
     AgentIdEdit, AgentDescriptionEdit, AgentModelEdit, AgentColorEdit: TEdit;
     AgentModeEdit: TComboBox;
     AgentPromptMemo: TMemo;
@@ -121,6 +129,11 @@ type
     function SelectedText(List: TListBox): string;
     function SelectedListViewText(List: TListView; SubItemIndex: Integer = -1): string;
     function SelectedModelId: string;
+    procedure SelectProviderAndModel(const ProviderId, ModelId: string);
+    function SelectedModalities(const Checks: array of TCheckBox): string;
+    procedure ApplyModalities(const Csv: string; const Checks: array of TCheckBox);
+    procedure ApplyModelInfoToControls(const Info: TProviderModelInfo);
+    function ModelInfoFromControls: TProviderModelInfo;
     function SessionModelCaption(const ModelId: string): string;
     function SessionModelDisplayName(const ModelId: string): string;
     function SelectedTools: string;
@@ -143,6 +156,8 @@ type
     procedure OnSaveModel(Sender: TObject);
     procedure OnDeleteModel(Sender: TObject);
     procedure OnTestModelConnectivity(Sender: TObject);
+    procedure OnFetchModels(Sender: TObject);
+    procedure OnAddFetchedModels(Sender: TObject);
     procedure OnAgentSelect(Sender: TObject);
     procedure OnSaveAgent(Sender: TObject);
     procedure OnDeleteAgent(Sender: TObject);
@@ -182,6 +197,9 @@ const
   BUTTON_GAP = 12;
   OMO_BUTTON_W = 180;
   CHART_TITLE_H = 38;
+  MODEL_MODALITIES: array[0..4] of string = ('text', 'image', 'audio', 'video', 'pdf');
+  MODEL_STATUSES: array[0..4] of string = ('', 'active', 'beta', 'alpha', 'deprecated');
+  MODEL_INTERLEAVED_OPTIONS: array[0..4] of string = ('', 'true', 'reasoning', 'reasoning_content', 'reasoning_details');
 
 constructor TMainForm.Create(TheOwner: TComponent);
 begin
@@ -375,9 +393,39 @@ begin
   ModelList := TListBox.Create(Tab); ModelList.Parent := Tab; ModelList.SetBounds(16, 292, 210, 328); ModelList.Hint := '模型列表：选择后状态栏显示完整名称和 key'; ModelList.ShowHint := True; ModelList.OnClick := @OnModelSelect;
   ModelIdLabel := AddLabel(Tab, 'Model ID', 250, 292); ModelIdEdit := AddEdit(Tab, 370, 288, 520); ModelIdEdit.Anchors := [akLeft, akTop, akRight];
   ModelNameLabel := AddLabel(Tab, '模型显示名', 250, 330); ModelNameEdit := AddEdit(Tab, 370, 326, 520); ModelNameEdit.Anchors := [akLeft, akTop, akRight];
-  ModelSaveButton := AddButton(Tab, '保存 Model', 370, 368, 130, @OnSaveModel);
-  ModelDeleteButton := AddButton(Tab, '删除 Model', 510, 368, 130, @OnDeleteModel);
-  ModelTestButton := AddButton(Tab, '测试连通性', 650, 368, 130, @OnTestModelConnectivity);
+  ModelFamilyLabel := AddLabel(Tab, 'Family', 250, 368); ModelFamilyEdit := AddEdit(Tab, 370, 364, 180);
+  ModelStatusLabel := AddLabel(Tab, 'Status', 570, 368); ModelStatusEdit := AddCombo(Tab, 640, 364, 160, MODEL_STATUSES);
+  ModelContextLimitLabel := AddLabel(Tab, 'Context', 250, 406); ModelContextLimitEdit := TSpinEdit.Create(Tab); ModelContextLimitEdit.Parent := Tab; ModelContextLimitEdit.SetBounds(370, 402, 120, 28); ModelContextLimitEdit.MinValue := 0; ModelContextLimitEdit.MaxValue := 10000000; ModelContextLimitEdit.Value := 200000;
+  ModelInputLimitLabel := AddLabel(Tab, 'Input', 510, 406); ModelInputLimitEdit := TSpinEdit.Create(Tab); ModelInputLimitEdit.Parent := Tab; ModelInputLimitEdit.SetBounds(570, 402, 120, 28); ModelInputLimitEdit.MinValue := 0; ModelInputLimitEdit.MaxValue := 10000000;
+  ModelOutputLimitLabel := AddLabel(Tab, 'Output', 710, 406); ModelOutputLimitEdit := TSpinEdit.Create(Tab); ModelOutputLimitEdit.Parent := Tab; ModelOutputLimitEdit.SetBounds(780, 402, 120, 28); ModelOutputLimitEdit.MinValue := 0; ModelOutputLimitEdit.MaxValue := 10000000; ModelOutputLimitEdit.Value := 16000;
+  ModelReasoningCheck := TCheckBox.Create(Tab); ModelReasoningCheck.Parent := Tab; ModelReasoningCheck.Caption := 'Reasoning'; ModelReasoningCheck.SetBounds(370, 440, 130, 24);
+  ModelAttachmentCheck := TCheckBox.Create(Tab); ModelAttachmentCheck.Parent := Tab; ModelAttachmentCheck.Caption := 'Attachment'; ModelAttachmentCheck.SetBounds(520, 440, 140, 24);
+  ModelTemperatureCheck := TCheckBox.Create(Tab); ModelTemperatureCheck.Parent := Tab; ModelTemperatureCheck.Caption := 'Temperature'; ModelTemperatureCheck.SetBounds(680, 440, 150, 24);
+  ModelToolCallCheck := TCheckBox.Create(Tab); ModelToolCallCheck.Parent := Tab; ModelToolCallCheck.Caption := 'Tool calls'; ModelToolCallCheck.SetBounds(850, 440, 130, 24);
+  ModelInterleavedLabel := AddLabel(Tab, 'Interleaved', 250, 474); ModelInterleavedEdit := AddCombo(Tab, 370, 470, 180, MODEL_INTERLEAVED_OPTIONS);
+  ModelInputModalitiesLabel := AddLabel(Tab, 'Input modalities', 250, 508);
+  ModelOutputModalitiesLabel := AddLabel(Tab, 'Output modalities', 250, 542);
+  for I := Low(MODEL_MODALITIES) to High(MODEL_MODALITIES) do
+  begin
+    ModelInputModalityChecks[I] := TCheckBox.Create(Tab);
+    ModelInputModalityChecks[I].Parent := Tab;
+    ModelInputModalityChecks[I].Caption := MODEL_MODALITIES[I];
+    ModelInputModalityChecks[I].SetBounds(370 + I * 90, 508, 86, 24);
+    ModelOutputModalityChecks[I] := TCheckBox.Create(Tab);
+    ModelOutputModalityChecks[I].Parent := Tab;
+    ModelOutputModalityChecks[I].Caption := MODEL_MODALITIES[I];
+    ModelOutputModalityChecks[I].SetBounds(370 + I * 90, 542, 86, 24);
+  end;
+  ModelInputModalityChecks[0].Checked := True;
+  ModelOutputModalityChecks[0].Checked := True;
+  ModelSaveButton := AddButton(Tab, '保存 Model', 370, 580, 130, @OnSaveModel);
+  ModelDeleteButton := AddButton(Tab, '删除 Model', 510, 580, 130, @OnDeleteModel);
+  ModelTestButton := AddButton(Tab, '测试连通性', 650, 580, 130, @OnTestModelConnectivity);
+  ModelFetchButton := AddButton(Tab, '拉取模型', 790, 580, 130, @OnFetchModels);
+  ModelAddFetchedButton := AddButton(Tab, '添加选中', 930, 580, 130, @OnAddFetchedModels);
+  ModelFetchList := TListView.Create(Tab); ModelFetchList.Parent := Tab; ModelFetchList.SetBounds(930, 16, 220, 550); ModelFetchList.ViewStyle := vsReport; ModelFetchList.RowSelect := True; ModelFetchList.ReadOnly := True; ModelFetchList.Checkboxes := True;
+  ModelFetchList.Columns.Add.Caption := 'Fetched model'; ModelFetchList.Columns[0].Width := 150;
+  ModelFetchList.Columns.Add.Caption := 'Context'; ModelFetchList.Columns[1].Width := 70;
 
   Tab := AddTab('OpenCode Agent');
   AgentList := TListBox.Create(Tab); AgentList.Parent := Tab; AgentList.SetBounds(16, 16, 220, 610); AgentList.OnClick := @OnAgentSelect;
@@ -535,9 +583,24 @@ begin
   ProviderDeleteButton.Caption := UiText('Delete Provider', '删除 Provider');
   ModelList.Hint := UiText('Model list: select one to show the full name and key in the status bar', '模型列表：选择后状态栏显示完整名称和 key');
   ModelNameLabel.Caption := UiText('Model display name', '模型显示名');
+  ModelFamilyLabel.Caption := UiText('Family', '系列');
+  ModelStatusLabel.Caption := UiText('Status', '状态');
+  ModelContextLimitLabel.Caption := UiText('Context', '上下文');
+  ModelInputLimitLabel.Caption := UiText('Input', '输入');
+  ModelOutputLimitLabel.Caption := UiText('Output', '输出');
+  ModelInterleavedLabel.Caption := UiText('Interleaved', '交错推理');
+  ModelInputModalitiesLabel.Caption := UiText('Input modalities', '输入模态');
+  ModelOutputModalitiesLabel.Caption := UiText('Output modalities', '输出模态');
+  ModelReasoningCheck.Caption := UiText('Reasoning', '推理');
+  ModelAttachmentCheck.Caption := UiText('Attachment', '附件');
+  ModelTemperatureCheck.Caption := UiText('Temperature', '温度');
+  ModelToolCallCheck.Caption := UiText('Tool calls', '工具调用');
   ModelSaveButton.Caption := UiText('Save Model', '保存 Model');
   ModelDeleteButton.Caption := UiText('Delete Model', '删除 Model');
   ModelTestButton.Caption := UiText('Test', '测试连通性');
+  ModelFetchButton.Caption := UiText('Fetch Models', '拉取模型');
+  ModelAddFetchedButton.Caption := UiText('Add Selected', '添加选中');
+  ModelFetchList.Hint := UiText('Fetched models from provider API, enriched with models.dev when available', '从 Provider API 拉取的模型，可用时用 models.dev 补齐能力');
 
   AgentDescriptionLabel.Caption := UiText('Description', '描述');
   AgentModeLabel.Caption := UiText('Mode', '模式');
@@ -672,6 +735,8 @@ begin
       ListHeight := 190;
     FieldX := 370;
     RightEdge := W - 16;
+    if W >= 1280 then
+      RightEdge := W - 250;
     FieldW := RightEdge - FieldX;
     if FieldW < 360 then
       FieldW := 360;
@@ -694,9 +759,38 @@ begin
     ModelIdEdit.SetBounds(FieldX, ModelTop, FieldW, 28);
     ModelNameLabel.SetBounds(250, ModelTop + 42, 120, 24);
     ModelNameEdit.SetBounds(FieldX, ModelTop + 38, FieldW, 28);
-    ModelSaveButton.SetBounds(FieldX, ModelTop + 80, 130, BUTTON_H);
-    ModelDeleteButton.SetBounds(FieldX + 150, ModelTop + 80, 130, BUTTON_H);
-    ModelTestButton.SetBounds(FieldX + 300, ModelTop + 80, 140, BUTTON_H);
+    ModelFamilyLabel.SetBounds(250, ModelTop + 80, 120, 24);
+    ModelFamilyEdit.SetBounds(FieldX, ModelTop + 76, 180, 28);
+    ModelStatusLabel.SetBounds(FieldX + 200, ModelTop + 80, 70, 24);
+    ModelStatusEdit.SetBounds(FieldX + 270, ModelTop + 76, 160, 28);
+    ModelContextLimitLabel.SetBounds(250, ModelTop + 118, 120, 24);
+    ModelContextLimitEdit.SetBounds(FieldX, ModelTop + 114, 120, 28);
+    ModelInputLimitLabel.SetBounds(FieldX + 140, ModelTop + 118, 70, 24);
+    ModelInputLimitEdit.SetBounds(FieldX + 200, ModelTop + 114, 120, 28);
+    ModelOutputLimitLabel.SetBounds(FieldX + 340, ModelTop + 118, 70, 24);
+    ModelOutputLimitEdit.SetBounds(FieldX + 410, ModelTop + 114, 120, 28);
+    ModelReasoningCheck.SetBounds(FieldX, ModelTop + 152, 130, 24);
+    ModelAttachmentCheck.SetBounds(FieldX + 150, ModelTop + 152, 140, 24);
+    ModelTemperatureCheck.SetBounds(FieldX + 310, ModelTop + 152, 150, 24);
+    ModelToolCallCheck.SetBounds(FieldX + 480, ModelTop + 152, 130, 24);
+    ModelInterleavedLabel.SetBounds(250, ModelTop + 186, 120, 24);
+    ModelInterleavedEdit.SetBounds(FieldX, ModelTop + 182, 180, 28);
+    ModelInputModalitiesLabel.SetBounds(250, ModelTop + 220, 120, 24);
+    ModelOutputModalitiesLabel.SetBounds(250, ModelTop + 254, 120, 24);
+    for I := Low(MODEL_MODALITIES) to High(MODEL_MODALITIES) do
+    begin
+      ModelInputModalityChecks[I].SetBounds(FieldX + I * 90, ModelTop + 220, 86, 24);
+      ModelOutputModalityChecks[I].SetBounds(FieldX + I * 90, ModelTop + 254, 86, 24);
+    end;
+    ModelSaveButton.SetBounds(FieldX, ModelTop + 294, 130, BUTTON_H);
+    ModelDeleteButton.SetBounds(FieldX + 150, ModelTop + 294, 130, BUTTON_H);
+    ModelTestButton.SetBounds(FieldX + 300, ModelTop + 294, 140, BUTTON_H);
+    ModelFetchButton.SetBounds(FieldX + 460, ModelTop + 294, 130, BUTTON_H);
+    ModelAddFetchedButton.SetBounds(FieldX + 600, ModelTop + 294, 130, BUTTON_H);
+    if W >= 1280 then
+      ModelFetchList.SetBounds(W - 236, 16, 220, H - 32)
+    else
+      ModelFetchList.SetBounds(FieldX, ModelTop + 344, FieldW, H - (ModelTop + 360));
   end;
 
   if Assigned(AgentList) then
@@ -1177,6 +1271,94 @@ begin
     Result := ModelIdEdit.Text;
 end;
 
+procedure TMainForm.SelectProviderAndModel(const ProviderId, ModelId: string);
+var
+  Index: Integer;
+begin
+  Index := ProviderList.Items.IndexOf(ProviderId);
+  if Index >= 0 then
+  begin
+    ProviderList.ItemIndex := Index;
+    OnProviderSelect(ProviderList);
+  end;
+  Index := FModelListKeys.IndexOf(ModelId);
+  if Index >= 0 then
+  begin
+    ModelList.ItemIndex := Index;
+    OnModelSelect(ModelList);
+  end;
+end;
+
+function TMainForm.SelectedModalities(const Checks: array of TCheckBox): string;
+var
+  I: Integer;
+begin
+  Result := '';
+  for I := Low(Checks) to High(Checks) do
+    if Checks[I].Checked then
+    begin
+      if Result <> '' then
+        Result := Result + ',';
+      Result := Result + Checks[I].Caption;
+    end;
+  if Result = '' then
+    Result := 'text';
+end;
+
+procedure TMainForm.ApplyModalities(const Csv: string; const Checks: array of TCheckBox);
+var
+  I: Integer;
+  Values: TStringArray;
+  Value: string;
+begin
+  for I := Low(Checks) to High(Checks) do
+    Checks[I].Checked := False;
+  Values := Csv.Split(',');
+  for Value in Values do
+    for I := Low(Checks) to High(Checks) do
+      if SameText(Trim(Value), Checks[I].Caption) then
+        Checks[I].Checked := True;
+  if Csv = '' then
+    Checks[0].Checked := True;
+end;
+
+procedure TMainForm.ApplyModelInfoToControls(const Info: TProviderModelInfo);
+begin
+  ModelIdEdit.Text := Info.Id;
+  ModelNameEdit.Text := Info.Name;
+  ModelFamilyEdit.Text := Info.Family;
+  ModelStatusEdit.Text := Info.Status;
+  ModelContextLimitEdit.Value := Info.ContextLimit;
+  ModelInputLimitEdit.Value := Info.InputLimit;
+  ModelOutputLimitEdit.Value := Info.OutputLimit;
+  ModelReasoningCheck.Checked := Info.Reasoning;
+  ModelAttachmentCheck.Checked := Info.Attachment;
+  ModelTemperatureCheck.Checked := Info.Temperature;
+  ModelToolCallCheck.Checked := Info.ToolCall;
+  ModelInterleavedEdit.Text := Info.Interleaved;
+  ApplyModalities(Info.InputModalities, ModelInputModalityChecks);
+  ApplyModalities(Info.OutputModalities, ModelOutputModalityChecks);
+end;
+
+function TMainForm.ModelInfoFromControls: TProviderModelInfo;
+begin
+  Result := Default(TProviderModelInfo);
+  Result.Id := Trim(ModelIdEdit.Text);
+  Result.Name := Trim(ModelNameEdit.Text);
+  Result.Family := Trim(ModelFamilyEdit.Text);
+  Result.Status := Trim(ModelStatusEdit.Text);
+  Result.ContextLimit := ModelContextLimitEdit.Value;
+  Result.InputLimit := ModelInputLimitEdit.Value;
+  Result.OutputLimit := ModelOutputLimitEdit.Value;
+  Result.Reasoning := ModelReasoningCheck.Checked;
+  Result.Attachment := ModelAttachmentCheck.Checked;
+  Result.Temperature := ModelTemperatureCheck.Checked;
+  Result.ToolCall := ModelToolCallCheck.Checked;
+  Result.Interleaved := Trim(ModelInterleavedEdit.Text);
+  Result.InputModalities := SelectedModalities(ModelInputModalityChecks);
+  Result.OutputModalities := SelectedModalities(ModelOutputModalityChecks);
+end;
+
 function TMainForm.SessionModelDisplayName(const ModelId: string): string;
 var
   ProviderId, RawModelId: string;
@@ -1449,6 +1631,8 @@ begin
   try
     ModelList.Clear;
     FModelListKeys.Clear;
+    ModelFetchList.Items.Clear;
+    SetLength(FFetchedModels, 0);
     Models := nil;
     if Assigned(Provider) and (Provider.Find('models') is TJSONObject) then
       Models := TJSONObject(Provider.Find('models'));
@@ -1487,22 +1671,85 @@ end;
 
 procedure TMainForm.OnModelSelect(Sender: TObject);
 var
-  Provider, Models, ModelObj: TJSONObject;
+  Provider, Models, ModelObj, LimitObj, ModalitiesObj, InterleavedObj: TJSONObject;
+  Node: TJSONData;
+  Info: TProviderModelInfo;
+  I: Integer;
 begin
-  ModelIdEdit.Text := SelectedModelId;
-  ModelNameEdit.Text := '';
-  ModelIdEdit.Hint := ModelIdEdit.Text;
+  Info := Default(TProviderModelInfo);
+  Info.Id := SelectedModelId;
+  Info.ContextLimit := 200000;
+  Info.OutputLimit := 16000;
+  Info.InputModalities := 'text';
+  Info.OutputModalities := 'text';
   Provider := ObjectInSection(FConfig.Data, 'provider', ProviderIdEdit.Text);
   if Assigned(Provider) and (Provider.Find('models') is TJSONObject) then
   begin
     Models := TJSONObject(Provider.Find('models'));
-    if Models.Find(ModelIdEdit.Text) is TJSONObject then
+    if Models.Find(Info.Id) is TJSONObject then
     begin
-      ModelObj := TJSONObject(Models.Find(ModelIdEdit.Text));
-      ModelNameEdit.Text := ModelObj.Get('name', '');
-      ModelNameEdit.Hint := ModelNameEdit.Text;
+      ModelObj := TJSONObject(Models.Find(Info.Id));
+      Info.Name := ModelObj.Get('name', '');
+      Info.Family := ModelObj.Get('family', '');
+      Info.Status := ModelObj.Get('status', '');
+      Info.Reasoning := ModelObj.Get('reasoning', False);
+      Info.Attachment := ModelObj.Get('attachment', False);
+      Info.Temperature := ModelObj.Get('temperature', False);
+      Info.ToolCall := ModelObj.Get('tool_call', False);
+      if ModelObj.Find('limit') is TJSONObject then
+      begin
+        LimitObj := TJSONObject(ModelObj.Find('limit'));
+        Node := LimitObj.Find('context');
+        if Assigned(Node) then
+          Info.ContextLimit := Round(Node.AsFloat);
+        Node := LimitObj.Find('input');
+        if Assigned(Node) then
+          Info.InputLimit := Round(Node.AsFloat);
+        Node := LimitObj.Find('output');
+        if Assigned(Node) then
+          Info.OutputLimit := Round(Node.AsFloat);
+      end;
+      if ModelObj.Find('modalities') is TJSONObject then
+      begin
+        ModalitiesObj := TJSONObject(ModelObj.Find('modalities'));
+        Info.InputModalities := '';
+        Info.OutputModalities := '';
+        Node := ModalitiesObj.Find('input');
+        if Node is TJSONArray then
+          for I := 0 to TJSONArray(Node).Count - 1 do
+          begin
+            if Info.InputModalities <> '' then
+              Info.InputModalities := Info.InputModalities + ',';
+            Info.InputModalities := Info.InputModalities + TJSONArray(Node).Strings[I];
+          end;
+        Node := ModalitiesObj.Find('output');
+        if Node is TJSONArray then
+          for I := 0 to TJSONArray(Node).Count - 1 do
+          begin
+            if Info.OutputModalities <> '' then
+              Info.OutputModalities := Info.OutputModalities + ',';
+            Info.OutputModalities := Info.OutputModalities + TJSONArray(Node).Strings[I];
+          end;
+      end;
+      Node := ModelObj.Find('interleaved');
+      if Assigned(Node) then
+      begin
+        if Node.JSONType = jtBoolean then
+        begin
+          if Node.AsBoolean then
+            Info.Interleaved := 'true';
+        end
+        else if Node is TJSONObject then
+        begin
+          InterleavedObj := TJSONObject(Node);
+          Info.Interleaved := InterleavedObj.Get('field', '');
+        end;
+      end;
     end;
   end;
+  ApplyModelInfoToControls(Info);
+  ModelIdEdit.Hint := ModelIdEdit.Text;
+  ModelNameEdit.Hint := ModelNameEdit.Text;
   if ModelNameEdit.Text <> '' then
     Status.SimpleText := UiText('Model: ', '模型: ') + ModelNameEdit.Text + ' / ' + ModelIdEdit.Text
   else
@@ -1510,9 +1757,18 @@ begin
 end;
 
 procedure TMainForm.OnSaveProvider(Sender: TObject);
+var
+  ProviderId: string;
 begin
-  FConfig.UpsertProvider(ProviderIdEdit.Text, ProviderNameEdit.Text, ProviderNpmEdit.Text, ProviderBaseUrlEdit.Text, ProviderApiKeyEdit.Text);
+  ProviderId := Trim(ProviderIdEdit.Text);
+  if ProviderId = '' then
+  begin
+    ShowMessage(UiText('Provider ID is required.', 'Provider ID 不能为空。'));
+    Exit;
+  end;
+  FConfig.UpsertProvider(ProviderId, ProviderNameEdit.Text, ProviderNpmEdit.Text, ProviderBaseUrlEdit.Text, ProviderApiKeyEdit.Text);
   RefreshAll;
+  SelectProviderAndModel(ProviderId, '');
 end;
 
 procedure TMainForm.OnDeleteProvider(Sender: TObject);
@@ -1522,9 +1778,28 @@ begin
 end;
 
 procedure TMainForm.OnSaveModel(Sender: TObject);
+var
+  Info: TProviderModelInfo;
+  ProviderId: string;
 begin
-  FConfig.UpsertModel(ProviderIdEdit.Text, ModelIdEdit.Text, ModelNameEdit.Text);
+  ProviderId := Trim(ProviderIdEdit.Text);
+  Info := ModelInfoFromControls;
+  if ProviderId = '' then
+  begin
+    ShowMessage(UiText('Provider ID is required before saving a model.', '保存模型前必须填写 Provider ID。'));
+    Exit;
+  end;
+  if Info.Id = '' then
+  begin
+    ShowMessage(UiText('Model ID is required.', 'Model ID 不能为空。'));
+    Exit;
+  end;
+  FConfig.UpsertModel(ProviderId, Info.Id, Info.Name, Info.Family, Info.Status,
+    Info.ContextLimit, Info.InputLimit, Info.OutputLimit, Info.Reasoning,
+    Info.Attachment, Info.Temperature, Info.ToolCall, Info.Interleaved,
+    Info.InputModalities, Info.OutputModalities);
   RefreshAll;
+  SelectProviderAndModel(ProviderId, Info.Id);
 end;
 
 procedure TMainForm.OnDeleteModel(Sender: TObject);
@@ -1548,6 +1823,68 @@ begin
     Status.SimpleText := UiText('Model connectivity test failed: ', '模型连通性测试失败: ') + UiMessage(R.ErrorMessage);
     ShowMessage(Status.SimpleText);
   end;
+end;
+
+procedure TMainForm.OnFetchModels(Sender: TObject);
+var
+  I: Integer;
+  Item: TListItem;
+begin
+  if Trim(ProviderIdEdit.Text) = '' then
+  begin
+    ShowMessage(UiText('Provider ID is required before fetching models.', '拉取模型前必须填写 Provider ID。'));
+    Exit;
+  end;
+  ModelFetchList.Items.Clear;
+  try
+    FFetchedModels := FetchProviderModels(ProviderIdEdit.Text, ProviderBaseUrlEdit.Text, ProviderApiKeyEdit.Text);
+    for I := 0 to High(FFetchedModels) do
+    begin
+      Item := ModelFetchList.Items.Add;
+      Item.Caption := FFetchedModels[I].Id;
+      Item.SubItems.Add(IntToStr(FFetchedModels[I].ContextLimit));
+      Item.Checked := True;
+    end;
+    Status.SimpleText := UiText('Fetched models: ', '已拉取模型: ') + IntToStr(Length(FFetchedModels));
+  except
+    on E: Exception do
+    begin
+      Status.SimpleText := UiText('Fetch models failed: ', '拉取模型失败: ') + UiMessage(E.Message);
+      ShowMessage(Status.SimpleText);
+    end;
+  end;
+end;
+
+procedure TMainForm.OnAddFetchedModels(Sender: TObject);
+var
+  I, Added: Integer;
+  Info: TProviderModelInfo;
+  ProviderId, LastModelId: string;
+begin
+  ProviderId := Trim(ProviderIdEdit.Text);
+  if ProviderId = '' then
+  begin
+    ShowMessage(UiText('Provider ID is required before adding fetched models.', '添加拉取模型前必须填写 Provider ID。'));
+    Exit;
+  end;
+  Added := 0;
+  LastModelId := '';
+  for I := 0 to ModelFetchList.Items.Count - 1 do
+    if ModelFetchList.Items[I].Checked and (I <= High(FFetchedModels)) then
+    begin
+      Info := FFetchedModels[I];
+      if Info.Id = '' then
+        Continue;
+      FConfig.UpsertModel(ProviderId, Info.Id, Info.Name, Info.Family, Info.Status,
+        Info.ContextLimit, Info.InputLimit, Info.OutputLimit, Info.Reasoning,
+        Info.Attachment, Info.Temperature, Info.ToolCall, Info.Interleaved,
+        Info.InputModalities, Info.OutputModalities);
+      Inc(Added);
+      LastModelId := Info.Id;
+    end;
+  RefreshAll;
+  SelectProviderAndModel(ProviderId, LastModelId);
+  Status.SimpleText := UiText('Added fetched models: ', '已添加拉取模型: ') + IntToStr(Added);
 end;
 
 procedure TMainForm.OnAgentSelect(Sender: TObject);

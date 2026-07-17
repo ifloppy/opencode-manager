@@ -1,6 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 $lazbuild = if ($env:LAZBUILD) { $env:LAZBUILD } else { 'lazbuild' }
+& "$PSScriptRoot\register-packages.ps1"
 & $lazbuild "tests/opencode_manager_tests.lpi"
 
 $runner = Get-ChildItem -LiteralPath "lib/tests" -Recurse -File |

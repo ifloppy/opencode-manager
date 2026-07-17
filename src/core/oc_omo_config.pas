@@ -5,7 +5,7 @@ unit oc_omo_config;
 interface
 
 uses
-  Classes, SysUtils, fpjson, oc_json, oc_config;
+  Classes, SysUtils, fpjson, fpc_jsonc, oc_config;
 
 type
   TOMOConfig = class
@@ -33,23 +33,6 @@ type
   end;
 
 implementation
-
-procedure CopyFileSimple(const SourceName, TargetName: string);
-var
-  SourceStream, TargetStream: TFileStream;
-begin
-  SourceStream := TFileStream.Create(SourceName, fmOpenRead or fmShareDenyWrite);
-  try
-    TargetStream := TFileStream.Create(TargetName, fmCreate);
-    try
-      TargetStream.CopyFrom(SourceStream, 0);
-    finally
-      TargetStream.Free;
-    end;
-  finally
-    SourceStream.Free;
-  end;
-end;
 
 procedure AddIssue(var Issues: TValidationIssueArray; const Severity, Message: string);
 var
@@ -121,35 +104,14 @@ end;
 
 procedure TOMOConfig.SaveToFile(const AFileName: string);
 var
-  Target, Dir, BackupDir, BackupName, TempName: string;
-  Stream: TStringStream;
+  Target: string;
 begin
   Target := AFileName;
   if Target = '' then
     Target := FFileName;
   if Target = '' then
     raise Exception.Create('没有 Oh My OpenAgent 配置文件路径');
-  Dir := ExtractFileDir(Target);
-  if (Dir <> '') and (not DirectoryExists(Dir)) then
-    ForceDirectories(Dir);
-  if FileExists(Target) then
-  begin
-    BackupDir := IncludeTrailingPathDelimiter(Dir) + 'backups';
-    ForceDirectories(BackupDir);
-    BackupName := IncludeTrailingPathDelimiter(BackupDir) + ExtractFileName(Target) + '.' + FormatDateTime('yyyymmddhhnnss', Now) + '.bak';
-    CopyFileSimple(Target, BackupName);
-  end;
-  TempName := Target + '.tmp';
-  Stream := TStringStream.Create(AsJson, TEncoding.UTF8);
-  try
-    Stream.SaveToFile(TempName);
-  finally
-    Stream.Free;
-  end;
-  if FileExists(Target) then
-    DeleteFile(Target);
-  if not RenameFile(TempName, Target) then
-    raise Exception.Create('保存配置失败: ' + Target);
+  AtomicWriteTextFile(Target, AsJson, True);
   FFileName := Target;
 end;
 

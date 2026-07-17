@@ -43,7 +43,7 @@
     <Version Value="11"/>
     <PathDelim Value="\"/>
     <SearchPaths>
-      <OtherUnitFiles Value="..\src\core"/>
+      <OtherUnitFiles Value="..\src\core;..\packages\fpc_jsonc\src;..\packages\fpc_llm_api\src"/>
       <UnitOutputDirectory Value="..\lib\tests\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Parsing>

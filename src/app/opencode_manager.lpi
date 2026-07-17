@@ -56,7 +56,7 @@
     <PathDelim Value="\"/>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
-      <OtherUnitFiles Value="..\core"/>
+      <OtherUnitFiles Value="..\core;..\..\packages\fpc_jsonc\src;..\..\packages\fpc_llm_api\src"/>
       <UnitOutputDirectory Value="..\..\lib\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Parsing>

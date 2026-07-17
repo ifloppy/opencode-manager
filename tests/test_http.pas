@@ -5,7 +5,7 @@ unit test_http;
 interface
 
 uses
-  Classes, SysUtils, fpcunit, testregistry, oc_http;
+  Classes, SysUtils, fpcunit, testregistry, fpc_llm_api;
 
 type
   THttpTests = class(TTestCase)

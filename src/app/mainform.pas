@@ -6,8 +6,8 @@ interface
 
 uses
   Classes, SysUtils, fpjson, Forms, Controls, Graphics, Dialogs, StdCtrls,
-  ComCtrls, ExtCtrls, Spin, oc_config, oc_omo_config, oc_paths, oc_profiles,
-  oc_presets, oc_http, oc_sessions, oc_i18n;
+  ComCtrls, ExtCtrls, Spin, fpc_jsonc, fpc_llm_api, oc_config, oc_omo_config,
+  oc_paths, oc_profiles, oc_presets, oc_sessions, oc_i18n;
 
 type
   { TMainForm }
@@ -134,6 +134,10 @@ type
     procedure ApplyModalities(const Csv: string; const Checks: array of TCheckBox);
     procedure ApplyModelInfoToControls(const Info: TProviderModelInfo);
     function ModelInfoFromControls: TProviderModelInfo;
+    function WarnJsoncCommentLoss(const FileName: string): Boolean;
+    function SaveOpenCodeNow: Boolean;
+    function SaveOMONow: Boolean;
+    function SaveAllNow: Boolean;
     function SessionModelCaption(const ModelId: string): string;
     function SessionModelDisplayName(const ModelId: string): string;
     function SelectedTools: string;
@@ -1289,6 +1293,95 @@ begin
   end;
 end;
 
+function TMainForm.WarnJsoncCommentLoss(const FileName: string): Boolean;
+var
+  FileText: string;
+  Stream: TStringStream;
+  NeedsWarn: Boolean;
+begin
+  Result := True;
+  if not FileExists(FileName) then
+    Exit;
+  NeedsWarn := FileLooksLikeJsonc(FileName);
+  if not NeedsWarn then
+  begin
+    Stream := TStringStream.Create('', TEncoding.UTF8);
+    try
+      Stream.LoadFromFile(FileName);
+      FileText := Stream.DataString;
+    finally
+      Stream.Free;
+    end;
+    NeedsWarn := TextContainsJsonComments(FileText);
+  end;
+  if NeedsWarn then
+    Result := MessageDlg(
+      UiText('JSONC warning', 'JSONC 警告'),
+      UiText(
+        'Saving will rewrite the config as formatted JSON and may remove comments/trailing commas. A backup will be created. Continue?',
+        '保存会把配置重写为格式化 JSON，并可能删除注释和尾逗号。会先创建备份。是否继续？'),
+      mtWarning, [mbYes, mbNo], 0) = mrYes;
+end;
+
+function TMainForm.SaveOpenCodeNow: Boolean;
+begin
+  Result := False;
+  if Trim(ConfigPathEdit.Text) = '' then
+  begin
+    ShowMessage(UiText('OpenCode config path is empty.', 'OpenCode 配置路径为空。'));
+    Exit;
+  end;
+  if not WarnJsoncCommentLoss(ConfigPathEdit.Text) then
+    Exit;
+  try
+    FConfig.SaveToFile(ConfigPathEdit.Text);
+    Status.SimpleText := UiText('Saved OpenCode config: ', '已保存 OpenCode 配置: ') + ConfigPathEdit.Text;
+    Result := True;
+  except
+    on E: Exception do
+    begin
+      Status.SimpleText := UiText('Save OpenCode config failed: ', '保存 OpenCode 配置失败: ') + E.Message;
+      ShowMessage(Status.SimpleText);
+    end;
+  end;
+end;
+
+function TMainForm.SaveOMONow: Boolean;
+begin
+  Result := False;
+  if Trim(OMOPathEdit.Text) = '' then
+  begin
+    ShowMessage(UiText('OMO config path is empty.', 'OMO 配置路径为空。'));
+    Exit;
+  end;
+  if not WarnJsoncCommentLoss(OMOPathEdit.Text) then
+    Exit;
+  try
+    FOMO.SaveToFile(OMOPathEdit.Text);
+    Status.SimpleText := UiText('Saved OMO config: ', '已保存 OMO 配置: ') + OMOPathEdit.Text;
+    Result := True;
+  except
+    on E: Exception do
+    begin
+      Status.SimpleText := UiText('Save OMO config failed: ', '保存 OMO 配置失败: ') + E.Message;
+      ShowMessage(Status.SimpleText);
+    end;
+  end;
+end;
+
+function TMainForm.SaveAllNow: Boolean;
+var
+  OkOpenCode, OkOMO: Boolean;
+begin
+  OkOpenCode := SaveOpenCodeNow;
+  OkOMO := SaveOMONow;
+  Result := OkOpenCode and OkOMO;
+  if Result then
+    Status.SimpleText := UiText('Saved all configs.', '已保存全部配置。')
+  else if OkOpenCode or OkOMO then
+    Status.SimpleText := UiText('Partial save completed. Check messages above.', '部分配置已保存，请查看上方提示。');
+end;
+
 function TMainForm.SelectedModalities(const Checks: array of TCheckBox): string;
 var
   I: Integer;
@@ -1583,10 +1676,11 @@ end;
 
 procedure TMainForm.OnSaveConfig(Sender: TObject);
 begin
-  FConfig.SaveToFile(ConfigPathEdit.Text);
-  FOMO.SaveToFile(OMOPathEdit.Text);
-  RefreshAll;
-  ShowMessage(UiText('Configuration saved. A backup was created in the backups directory.', '已保存配置，并在 backups 目录创建备份。'));
+  if SaveAllNow then
+  begin
+    RefreshAll;
+    ShowMessage(UiText('Configuration saved. A backup was created in the backups directory.', '已保存配置，并在 backups 目录创建备份。'));
+  end;
 end;
 
 procedure TMainForm.OnReload(Sender: TObject);
@@ -1767,14 +1861,18 @@ begin
     Exit;
   end;
   FConfig.UpsertProvider(ProviderId, ProviderNameEdit.Text, ProviderNpmEdit.Text, ProviderBaseUrlEdit.Text, ProviderApiKeyEdit.Text);
-  RefreshAll;
-  SelectProviderAndModel(ProviderId, '');
+  if SaveOpenCodeNow then
+  begin
+    RefreshAll;
+    SelectProviderAndModel(ProviderId, '');
+  end;
 end;
 
 procedure TMainForm.OnDeleteProvider(Sender: TObject);
 begin
   FConfig.DeleteProvider(ProviderIdEdit.Text);
-  RefreshAll;
+  if SaveOpenCodeNow then
+    RefreshAll;
 end;
 
 procedure TMainForm.OnSaveModel(Sender: TObject);
@@ -1798,14 +1896,18 @@ begin
     Info.ContextLimit, Info.InputLimit, Info.OutputLimit, Info.Reasoning,
     Info.Attachment, Info.Temperature, Info.ToolCall, Info.Interleaved,
     Info.InputModalities, Info.OutputModalities);
-  RefreshAll;
-  SelectProviderAndModel(ProviderId, Info.Id);
+  if SaveOpenCodeNow then
+  begin
+    RefreshAll;
+    SelectProviderAndModel(ProviderId, Info.Id);
+  end;
 end;
 
 procedure TMainForm.OnDeleteModel(Sender: TObject);
 begin
   FConfig.DeleteModel(ProviderIdEdit.Text, SelectedModelId);
-  RefreshAll;
+  if SaveOpenCodeNow then
+    RefreshAll;
 end;
 
 procedure TMainForm.OnTestModelConnectivity(Sender: TObject);
@@ -1882,9 +1984,14 @@ begin
       Inc(Added);
       LastModelId := Info.Id;
     end;
-  RefreshAll;
-  SelectProviderAndModel(ProviderId, LastModelId);
-  Status.SimpleText := UiText('Added fetched models: ', '已添加拉取模型: ') + IntToStr(Added);
+  if (Added > 0) and SaveOpenCodeNow then
+  begin
+    RefreshAll;
+    SelectProviderAndModel(ProviderId, LastModelId);
+    Status.SimpleText := UiText('Added fetched models: ', '已添加拉取模型: ') + IntToStr(Added);
+  end
+  else if Added = 0 then
+    Status.SimpleText := UiText('No fetched models selected.', '没有选中要添加的模型。');
 end;
 
 procedure TMainForm.OnAgentSelect(Sender: TObject);
@@ -1921,9 +2028,15 @@ end;
 
 procedure TMainForm.OnSaveAgent(Sender: TObject);
 begin
+  if Trim(AgentIdEdit.Text) = '' then
+  begin
+    ShowMessage(UiText('Agent ID is required.', 'Agent ID 不能为空。'));
+    Exit;
+  end;
   FConfig.UpsertAgent(AgentIdEdit.Text, AgentDescriptionEdit.Text, AgentModeEdit.Text, AgentModelEdit.Text, AgentPromptMemo.Text,
     AgentTempEdit.Value, AgentDisabledCheck.Checked, AgentColorEdit.Text, AgentMaxStepsEdit.Value, AgentHiddenCheck.Checked, SelectedTools);
-  RefreshAll;
+  if SaveOpenCodeNow then
+    RefreshAll;
 end;
 
 procedure TMainForm.OnDeleteAgent(Sender: TObject);
@@ -1934,7 +2047,8 @@ begin
     Exit;
   end;
   FConfig.DeleteAgent(AgentIdEdit.Text);
-  RefreshAll;
+  if SaveOpenCodeNow then
+    RefreshAll;
 end;
 
 procedure TMainForm.OnMcpSelect(Sender: TObject);
@@ -1976,17 +2090,24 @@ end;
 
 procedure TMainForm.OnSaveMcp(Sender: TObject);
 begin
+  if Trim(McpIdEdit.Text) = '' then
+  begin
+    ShowMessage(UiText('MCP ID is required.', 'MCP ID 不能为空。'));
+    Exit;
+  end;
   if (LowerCase(McpTypeEdit.Text) = 'remote') or (LowerCase(McpTypeEdit.Text) = 'sse') then
     FConfig.UpsertMcpRemote(McpIdEdit.Text, McpTargetEdit.Text, McpEnabledCheck.Checked, LowerCase(McpTypeEdit.Text))
   else
     FConfig.UpsertMcpLocal(McpIdEdit.Text, McpTargetEdit.Text, McpEnabledCheck.Checked);
-  RefreshAll;
+  if SaveOpenCodeNow then
+    RefreshAll;
 end;
 
 procedure TMainForm.OnDeleteMcp(Sender: TObject);
 begin
   FConfig.DeleteMcp(McpIdEdit.Text);
-  RefreshAll;
+  if SaveOpenCodeNow then
+    RefreshAll;
 end;
 
 procedure TMainForm.OnPluginSelect(Sender: TObject);
@@ -2005,14 +2126,21 @@ end;
 
 procedure TMainForm.OnSavePlugin(Sender: TObject);
 begin
+  if Trim(PluginNameEdit.Text) = '' then
+  begin
+    ShowMessage(UiText('Plugin name is required.', 'Plugin 名称不能为空。'));
+    Exit;
+  end;
   FConfig.UpsertPlugin(PluginNameEdit.Text);
-  RefreshAll;
+  if SaveOpenCodeNow then
+    RefreshAll;
 end;
 
 procedure TMainForm.OnDeletePlugin(Sender: TObject);
 begin
   FConfig.DeletePlugin(PluginNameEdit.Text);
-  RefreshAll;
+  if SaveOpenCodeNow then
+    RefreshAll;
 end;
 
 procedure TMainForm.OnCreateProfile(Sender: TObject);
@@ -2062,9 +2190,15 @@ end;
 
 procedure TMainForm.OnSaveOMOAgent(Sender: TObject);
 begin
+  if Trim(OMOAgentIdEdit.Text) = '' then
+  begin
+    ShowMessage(UiText('OMO Agent ID is required.', 'OMO Agent ID 不能为空。'));
+    Exit;
+  end;
   FOMO.UpsertAgent(OMOAgentIdEdit.Text, OMOAgentModelEdit.Text, OMOAgentCategoryEdit.Text, OMOAgentVariantEdit.Text,
     OMOAgentPromptMemo.Text, OMOAgentTempEdit.Value, OMOAgentDisabledCheck.Checked, OMOAgentThinkingEdit.Text, OMOAgentReasoningEdit.Text);
-  RefreshAll;
+  if SaveOMONow then
+    RefreshAll;
 end;
 
 procedure TMainForm.OnDeleteOMOAgent(Sender: TObject);
@@ -2075,7 +2209,8 @@ begin
     Exit;
   end;
   FOMO.DeleteAgent(OMOAgentIdEdit.Text);
-  RefreshAll;
+  if SaveOMONow then
+    RefreshAll;
 end;
 
 procedure TMainForm.OnOMOCategorySelect(Sender: TObject);
@@ -2110,15 +2245,22 @@ end;
 
 procedure TMainForm.OnSaveOMOCategory(Sender: TObject);
 begin
+  if Trim(OMOCategoryIdEdit.Text) = '' then
+  begin
+    ShowMessage(UiText('OMO Category ID is required.', 'OMO Category ID 不能为空。'));
+    Exit;
+  end;
   FOMO.UpsertCategory(OMOCategoryIdEdit.Text, OMOCategoryModelEdit.Text, OMOCategoryDescEdit.Text, OMOCategoryVariantEdit.Text,
     OMOCategoryPromptMemo.Text, OMOCategoryDisabledCheck.Checked, OMOCategoryThinkingEdit.Text, OMOCategoryReasoningEdit.Text);
-  RefreshAll;
+  if SaveOMONow then
+    RefreshAll;
 end;
 
 procedure TMainForm.OnDeleteOMOCategory(Sender: TObject);
 begin
   FOMO.DeleteCategory(OMOCategoryIdEdit.Text);
-  RefreshAll;
+  if SaveOMONow then
+    RefreshAll;
 end;
 
 procedure TMainForm.OnRefreshSessions(Sender: TObject);

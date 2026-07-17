@@ -16,6 +16,7 @@ type
     procedure UpsertsSseMcp;
     procedure ValidatesInvalidAgentMode;
     procedure UpsertsOpenAgentAgentAndCategory;
+    procedure SavesOpenCodeConfigToDiskAndReloads;
   end;
 
 implementation
@@ -148,6 +149,41 @@ begin
     AssertTrue(Pos('opencode/gpt-5-nano', Cfg.AsJson) > 0);
   finally
     Cfg.Free;
+  end;
+end;
+
+procedure TConfigTests.SavesOpenCodeConfigToDiskAndReloads;
+var
+  Cfg, Reloaded: TOpenCodeConfig;
+  Dir, Path: string;
+  Provider, Models, ModelObj: TJSONObject;
+begin
+  Dir := IncludeTrailingPathDelimiter(GetTempDir) + 'ocm-save-' + IntToStr(Random(MaxInt));
+  ForceDirectories(Dir);
+  Path := IncludeTrailingPathDelimiter(Dir) + 'opencode.jsonc';
+  Cfg := TOpenCodeConfig.Create;
+  try
+    Cfg.UpsertProvider('demo', 'Demo Provider', '@ai-sdk/openai-compatible', 'https://api.example.com/v1', 'secret');
+    Cfg.UpsertModel('demo', 'demo-model', 'Demo Model', 'demo', 'active', 200000, 0, 16000,
+      True, False, True, True, '', 'text,image', 'text');
+    Cfg.SaveToFile(Path);
+    AssertTrue(FileExists(Path));
+  finally
+    Cfg.Free;
+  end;
+
+  Reloaded := TOpenCodeConfig.Create;
+  try
+    Reloaded.LoadFromFile(Path);
+    Provider := TJSONObject(TJSONObject(Reloaded.Data.Find('provider')).Find('demo'));
+    Models := TJSONObject(Provider.Find('models'));
+    ModelObj := TJSONObject(Models.Find('demo-model'));
+    AssertEquals('Demo Model', ModelObj.Get('name', ''));
+    AssertTrue(ModelObj.Get('reasoning', False));
+    AssertEquals(200000, Round(TJSONObject(ModelObj.Find('limit')).Floats['context']));
+    AssertEquals(16000, Round(TJSONObject(ModelObj.Find('limit')).Floats['output']));
+  finally
+    Reloaded.Free;
   end;
 end;
 

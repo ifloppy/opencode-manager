@@ -41,11 +41,14 @@ type
 
     procedure UpsertProvider(const Id, DisplayName, NpmPackage, BaseURL, ApiKey: string);
     procedure DeleteProvider(const Id: string);
+    function HasModel(const ProviderId, ModelId: string): Boolean;
+    function GetModel(const ProviderId, ModelId: string): TJSONObject;
     procedure UpsertModel(const ProviderId, ModelId, DisplayName: string); overload;
     procedure UpsertModel(const ProviderId, ModelId, DisplayName, Family, Status: string;
       ContextLimit, InputLimit, OutputLimit: Integer; Reasoning, Attachment,
       Temperature, ToolCall: Boolean; const Interleaved, InputModalities,
       OutputModalities: string); overload;
+    procedure RenameModel(const ProviderId, OldModelId, NewModelId: string);
     procedure DeleteModel(const ProviderId, ModelId: string);
     procedure UpsertAgent(const Id, Description, Mode, Model, Prompt: string; Temperature: Double; Disabled: Boolean; const Color: string = ''; MaxSteps: Integer = 0; Hidden: Boolean = False; const Tools: string = '');
     procedure DeleteAgent(const Id: string);
@@ -405,6 +408,58 @@ begin
   ModalitiesObj := EnsureObject(ModelObj, 'modalities');
   AddStringArray(ModalitiesObj, 'input', InputModalities, 'text');
   AddStringArray(ModalitiesObj, 'output', OutputModalities, 'text');
+end;
+
+function TOpenCodeConfig.HasModel(const ProviderId, ModelId: string): Boolean;
+begin
+  Result := Assigned(GetModel(ProviderId, ModelId));
+end;
+
+function TOpenCodeConfig.GetModel(const ProviderId, ModelId: string): TJSONObject;
+var
+  Provider, Models: TJSONObject;
+begin
+  Result := nil;
+  if (ProviderId = '') or (ModelId = '') then
+    Exit;
+  Provider := FindObject('provider', ProviderId);
+  if not Assigned(Provider) then
+    Exit;
+  if not (Provider.Find('models') is TJSONObject) then
+    Exit;
+  Models := TJSONObject(Provider.Find('models'));
+  if Models.Find(ModelId) is TJSONObject then
+    Result := TJSONObject(Models.Find(ModelId));
+end;
+
+procedure TOpenCodeConfig.RenameModel(const ProviderId, OldModelId, NewModelId: string);
+var
+  Provider, Models, OldObj: TJSONObject;
+  Clone: TJSONData;
+begin
+  if (ProviderId = '') or (OldModelId = '') or (NewModelId = '') then
+    raise Exception.Create('Provider ID and model IDs are required for rename');
+  if OldModelId = NewModelId then
+    Exit;
+  Provider := FindObject('provider', ProviderId);
+  if not Assigned(Provider) then
+    raise Exception.Create('Provider not found: ' + ProviderId);
+  if not (Provider.Find('models') is TJSONObject) then
+    raise Exception.Create('Provider has no models: ' + ProviderId);
+  Models := TJSONObject(Provider.Find('models'));
+  if not (Models.Find(OldModelId) is TJSONObject) then
+    raise Exception.Create('Model not found: ' + OldModelId);
+  if Assigned(Models.Find(NewModelId)) then
+    raise Exception.Create('Target model ID already exists: ' + NewModelId);
+  OldObj := TJSONObject(Models.Find(OldModelId));
+  Clone := CloneJson(OldObj);
+  try
+    Models.Add(NewModelId, Clone);
+    Models.Delete(OldModelId);
+  except
+    Clone.Free;
+    raise;
+  end;
 end;
 
 procedure TOpenCodeConfig.DeleteModel(const ProviderId, ModelId: string);

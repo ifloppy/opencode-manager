@@ -52,7 +52,7 @@ type
     ModelIdLabel, ModelNameLabel, ModelFamilyLabel, ModelStatusLabel, ModelContextLimitLabel: TLabel;
     ModelInputLimitLabel, ModelOutputLimitLabel, ModelInterleavedLabel, ModelInputModalitiesLabel, ModelOutputModalitiesLabel: TLabel;
     ProviderSaveButton, ProviderDeleteButton: TButton;
-    ModelSaveButton, ModelDeleteButton, ModelTestButton, ModelFetchButton, ModelAddFetchedButton: TButton;
+    ModelNewButton, ModelSaveButton, ModelDeleteButton, ModelTestButton, ModelFetchButton, ModelAddFetchedButton: TButton;
     AgentIdEdit, AgentDescriptionEdit, AgentModelEdit, AgentColorEdit: TEdit;
     AgentModeEdit: TComboBox;
     AgentPromptMemo: TMemo;
@@ -157,6 +157,7 @@ type
     procedure OnModelSelect(Sender: TObject);
     procedure OnSaveProvider(Sender: TObject);
     procedure OnDeleteProvider(Sender: TObject);
+    procedure OnNewModel(Sender: TObject);
     procedure OnSaveModel(Sender: TObject);
     procedure OnDeleteModel(Sender: TObject);
     procedure OnTestModelConnectivity(Sender: TObject);
@@ -422,8 +423,9 @@ begin
   end;
   ModelInputModalityChecks[0].Checked := True;
   ModelOutputModalityChecks[0].Checked := True;
-  ModelSaveButton := AddButton(Tab, '保存 Model', 370, 580, 130, @OnSaveModel);
-  ModelDeleteButton := AddButton(Tab, '删除 Model', 510, 580, 130, @OnDeleteModel);
+  ModelNewButton := AddButton(Tab, '新建 Model', 370, 580, 120, @OnNewModel);
+  ModelSaveButton := AddButton(Tab, '保存 Model', 500, 580, 120, @OnSaveModel);
+  ModelDeleteButton := AddButton(Tab, '删除 Model', 630, 580, 120, @OnDeleteModel);
   ModelTestButton := AddButton(Tab, '测试连通性', 650, 580, 130, @OnTestModelConnectivity);
   ModelFetchButton := AddButton(Tab, '拉取模型', 790, 580, 130, @OnFetchModels);
   ModelAddFetchedButton := AddButton(Tab, '添加选中', 930, 580, 130, @OnAddFetchedModels);
@@ -599,6 +601,7 @@ begin
   ModelAttachmentCheck.Caption := UiText('Attachment', '附件');
   ModelTemperatureCheck.Caption := UiText('Temperature', '温度');
   ModelToolCallCheck.Caption := UiText('Tool calls', '工具调用');
+  ModelNewButton.Caption := UiText('New Model', '新建 Model');
   ModelSaveButton.Caption := UiText('Save Model', '保存 Model');
   ModelDeleteButton.Caption := UiText('Delete Model', '删除 Model');
   ModelTestButton.Caption := UiText('Test', '测试连通性');
@@ -786,11 +789,12 @@ begin
       ModelInputModalityChecks[I].SetBounds(FieldX + I * 90, ModelTop + 220, 86, 24);
       ModelOutputModalityChecks[I].SetBounds(FieldX + I * 90, ModelTop + 254, 86, 24);
     end;
-    ModelSaveButton.SetBounds(FieldX, ModelTop + 294, 130, BUTTON_H);
-    ModelDeleteButton.SetBounds(FieldX + 150, ModelTop + 294, 130, BUTTON_H);
-    ModelTestButton.SetBounds(FieldX + 300, ModelTop + 294, 140, BUTTON_H);
-    ModelFetchButton.SetBounds(FieldX + 460, ModelTop + 294, 130, BUTTON_H);
-    ModelAddFetchedButton.SetBounds(FieldX + 600, ModelTop + 294, 130, BUTTON_H);
+    ModelNewButton.SetBounds(FieldX, ModelTop + 294, 120, BUTTON_H);
+    ModelSaveButton.SetBounds(FieldX + 130, ModelTop + 294, 120, BUTTON_H);
+    ModelDeleteButton.SetBounds(FieldX + 260, ModelTop + 294, 120, BUTTON_H);
+    ModelTestButton.SetBounds(FieldX + 390, ModelTop + 294, 120, BUTTON_H);
+    ModelFetchButton.SetBounds(FieldX + 520, ModelTop + 294, 120, BUTTON_H);
+    ModelAddFetchedButton.SetBounds(FieldX + 650, ModelTop + 294, 120, BUTTON_H);
     if W >= 1280 then
       ModelFetchList.SetBounds(W - 236, 16, 220, H - 32)
     else
@@ -1875,13 +1879,29 @@ begin
     RefreshAll;
 end;
 
+procedure TMainForm.OnNewModel(Sender: TObject);
+var
+  Info: TProviderModelInfo;
+begin
+  ModelList.ItemIndex := -1;
+  Info := Default(TProviderModelInfo);
+  Info.ContextLimit := 200000;
+  Info.OutputLimit := 16000;
+  Info.InputModalities := 'text';
+  Info.OutputModalities := 'text';
+  ApplyModelInfoToControls(Info);
+  ModelIdEdit.SetFocus;
+  Status.SimpleText := UiText('Enter a new Model ID and details, then click Save Model.', '输入新 Model ID 和详情，然后点击保存 Model。');
+end;
+
 procedure TMainForm.OnSaveModel(Sender: TObject);
 var
   Info: TProviderModelInfo;
-  ProviderId: string;
+  ProviderId, SelectedId: string;
 begin
   ProviderId := Trim(ProviderIdEdit.Text);
   Info := ModelInfoFromControls;
+  SelectedId := SelectedModelId;
   if ProviderId = '' then
   begin
     ShowMessage(UiText('Provider ID is required before saving a model.', '保存模型前必须填写 Provider ID。'));
@@ -1891,6 +1911,18 @@ begin
   begin
     ShowMessage(UiText('Model ID is required.', 'Model ID 不能为空。'));
     Exit;
+  end;
+  if (SelectedId <> '') and (SelectedId <> Info.Id) then
+  begin
+    try
+      FConfig.RenameModel(ProviderId, SelectedId, Info.Id);
+    except
+      on E: Exception do
+      begin
+        ShowMessage(UiText('Rename model failed: ', '重命名模型失败: ') + E.Message);
+        Exit;
+      end;
+    end;
   end;
   FConfig.UpsertModel(ProviderId, Info.Id, Info.Name, Info.Family, Info.Status,
     Info.ContextLimit, Info.InputLimit, Info.OutputLimit, Info.Reasoning,

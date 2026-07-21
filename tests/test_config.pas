@@ -17,6 +17,7 @@ type
     procedure ValidatesInvalidAgentMode;
     procedure UpsertsOpenAgentAgentAndCategory;
     procedure SavesOpenCodeConfigToDiskAndReloads;
+    procedure FullModelCrudOnTempFixture;
   end;
 
 implementation
@@ -184,6 +185,90 @@ begin
     AssertEquals(16000, Round(TJSONObject(ModelObj.Find('limit')).Floats['output']));
   finally
     Reloaded.Free;
+  end;
+end;
+
+
+procedure TConfigTests.FullModelCrudOnTempFixture;
+var
+  Cfg, Reloaded: TOpenCodeConfig;
+  Dir, Path: string;
+  ModelObj: TJSONObject;
+  L: TStringList;
+begin
+  Dir := IncludeTrailingPathDelimiter(GetTempDir) + 'ocm-model-crud-' + IntToStr(Random(MaxInt));
+  ForceDirectories(Dir);
+  Path := IncludeTrailingPathDelimiter(Dir) + 'opencode.jsonc';
+
+  Cfg := TOpenCodeConfig.Create;
+  try
+    // Create provider + model
+    Cfg.UpsertProvider('thirdparty', 'Third Party', '@ai-sdk/openai-compatible', 'https://api.example.com/v1', '{env:API_KEY}');
+    AssertFalse(Cfg.HasModel('thirdparty', 'coder-v1'));
+    Cfg.UpsertModel('thirdparty', 'coder-v1', 'Coder V1', 'coder', 'active', 200000, 0, 16000,
+      True, True, True, True, '', 'text,image', 'text');
+    AssertTrue(Cfg.HasModel('thirdparty', 'coder-v1'));
+    ModelObj := Cfg.GetModel('thirdparty', 'coder-v1');
+    AssertTrue(Assigned(ModelObj));
+    AssertEquals('Coder V1', ModelObj.Get('name', ''));
+
+    // Update same id
+    Cfg.UpsertModel('thirdparty', 'coder-v1', 'Coder V1 Updated', 'coder', 'beta', 256000, 1000, 32000,
+      False, True, True, False, 'reasoning_content', 'text', 'text');
+    ModelObj := Cfg.GetModel('thirdparty', 'coder-v1');
+    AssertEquals('Coder V1 Updated', ModelObj.Get('name', ''));
+    AssertEquals('beta', ModelObj.Get('status', ''));
+    AssertEquals(256000, Round(TJSONObject(ModelObj.Find('limit')).Floats['context']));
+    AssertEquals(32000, Round(TJSONObject(ModelObj.Find('limit')).Floats['output']));
+    AssertFalse(ModelObj.Get('reasoning', True));
+
+    // Rename model key
+    Cfg.RenameModel('thirdparty', 'coder-v1', 'coder-v2');
+    AssertFalse(Cfg.HasModel('thirdparty', 'coder-v1'));
+    AssertTrue(Cfg.HasModel('thirdparty', 'coder-v2'));
+    ModelObj := Cfg.GetModel('thirdparty', 'coder-v2');
+    AssertEquals('Coder V1 Updated', ModelObj.Get('name', ''));
+
+    // Official-style second model under openai provider
+    Cfg.UpsertProvider('openai', 'OpenAI', '@ai-sdk/openai', 'https://api.openai.com/v1', '{env:OPENAI_API_KEY}');
+    Cfg.UpsertModel('openai', 'gpt-test', 'GPT Test', 'gpt', 'active', 128000, 0, 16000,
+      True, False, True, True, 'true', 'text', 'text');
+    AssertTrue(Cfg.HasModel('openai', 'gpt-test'));
+
+    Cfg.SaveToFile(Path);
+    AssertTrue(FileExists(Path));
+  finally
+    Cfg.Free;
+  end;
+
+  Reloaded := TOpenCodeConfig.Create;
+  try
+    Reloaded.LoadFromFile(Path);
+    AssertTrue(Reloaded.HasModel('thirdparty', 'coder-v2'));
+    AssertFalse(Reloaded.HasModel('thirdparty', 'coder-v1'));
+    AssertTrue(Reloaded.HasModel('openai', 'gpt-test'));
+    L := Reloaded.ModelIds('thirdparty');
+    try
+      AssertTrue(L.IndexOf('coder-v2') >= 0);
+    finally
+      L.Free;
+    end;
+
+    // Delete and persist
+    Reloaded.DeleteModel('openai', 'gpt-test');
+    AssertFalse(Reloaded.HasModel('openai', 'gpt-test'));
+    Reloaded.SaveToFile(Path);
+  finally
+    Reloaded.Free;
+  end;
+
+  Cfg := TOpenCodeConfig.Create;
+  try
+    Cfg.LoadFromFile(Path);
+    AssertFalse(Cfg.HasModel('openai', 'gpt-test'));
+    AssertTrue(Cfg.HasModel('thirdparty', 'coder-v2'));
+  finally
+    Cfg.Free;
   end;
 end;
 

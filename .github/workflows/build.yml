@@ -123,3 +123,26 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: release-artifacts/*.zip
+          generate_release_notes: true
+          body: |
+            ## OpenCode Manager
+
+            Desktop configuration manager for OpenCode (FreePascal / Lazarus).
+
+            ### Safety notice (important)
+            - **This software was largely generated and assisted by AI coding tools.**
+            - Treat it as experimental. Review changes before saving any config.
+            - **Back up** your real OpenCode config (`~/.config/opencode`) before use.
+            - The app can write OpenCode / OMO config files on page Save; do not run it against production configs until you trust the behavior.
+            - Windows packages may bundle runtime DLLs (`sqlite3`, OpenSSL). Prefer downloading only from this repository's Releases.
+
+            ### Included platforms
+            - Windows x86_64
+            - Linux x86_64 / aarch64
+            - macOS x86_64 / aarch64
+
+            ### Features in this release
+            - Provider / model CRUD with capability fields (limits, modalities, reasoning, etc.)
+            - Fetch models from provider APIs (+ models.dev enrichment when available)
+            - Session / token usage from OpenCode SQLite DB (metadata only, not chat text)
+            - English UI default with Chinese language switch
